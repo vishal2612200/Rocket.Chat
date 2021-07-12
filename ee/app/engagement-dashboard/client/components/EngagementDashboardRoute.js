@@ -1,24 +1,27 @@
 import React, { useEffect } from 'react';
 
-import { useRoute, useRouteParameter } from '../../../../../client/contexts/RouterContext';
-import { useAdminSideNav } from '../../../../../client/hooks/useAdminSideNav';
+import { useCurrentRoute, useRoute, useRouteParameter } from '../../../../../client/contexts/RouterContext';
 import { EngagementDashboardPage } from './EngagementDashboardPage';
 
 export function EngagementDashboardRoute() {
-	useAdminSideNav();
-
-	const goToEngagementDashboard = useRoute('engagement-dashboard');
-
+	const engagementDashboardRoute = useRoute('engagement-dashboard');
+	const [routeName] = useCurrentRoute();
 	const tab = useRouteParameter('tab');
 
 	useEffect(() => {
-		if (!tab) {
-			goToEngagementDashboard.replacingState({ tab: 'users' });
+		if (routeName !== 'engagement-dashboard') {
+			return;
 		}
-	}, [tab]);
+
+		if (!tab) {
+			engagementDashboardRoute.replace({ tab: 'users' });
+		}
+	}, [routeName, engagementDashboardRoute, tab]);
 
 	return <EngagementDashboardPage
 		tab={tab}
-		onSelectTab={(tab) => goToEngagementDashboard({ tab })}
+		onSelectTab={(tab) => engagementDashboardRoute.push({ tab })}
 	/>;
 }
+
+export default EngagementDashboardRoute;
