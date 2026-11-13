@@ -1,0 +1,32 @@
+import { Box } from '@rocket.chat/fuselage';
+import * as UiKit from '@rocket.chat/ui-kit';
+import type { ReactElement } from 'react';
+
+export type ItemProps = {
+	block: UiKit.ContextBlock['elements'][number];
+	surfaceRenderer: UiKit.SurfaceRenderer<ReactElement<any>>;
+	index: number;
+};
+
+const Item = ({ block: element, surfaceRenderer: parser, index }: ItemProps) => {
+	const renderedElement = parser.renderContextBlockElement(element, index);
+
+	if (!renderedElement) {
+		return null;
+	}
+
+	switch (element.type) {
+		case UiKit.TextObjectType.PLAIN_TEXT:
+		case UiKit.TextObjectType.MRKDWN:
+			return (
+				<Box is='span' fontScale='c1' color='secondary-info'>
+					{renderedElement}
+				</Box>
+			);
+
+		default:
+			return renderedElement;
+	}
+};
+
+export default Item;

@@ -1,0 +1,108 @@
+import type { Readable } from 'node:stream';
+import stream from 'node:stream';
+
+import { ServiceClassInternal } from '@rocket.chat/core-services';
+import type { IMediaService, ResizeResult } from '@rocket.chat/core-services';
+import { streamToBuffer } from '@rocket.chat/tools';
+import ExifTransformer from 'exif-be-gone';
+import ft from 'file-type';
+import isSvg from 'is-svg';
+import sharp from 'sharp';
+import type { FitEnum } from 'sharp';
+
+export class MediaService extends ServiceClassInternal implements IMediaService {
+	protected name = 'media';
+
+	private imageExts = new Set([
+		'jpg',
+		'png',
+		'gif',
+		'webp',
+		'flif',
+		'cr2',
+		'tif',
+		'bmp',
+		'jxr',
+		'psd',
+		'ico',
+		'bpg',
+		'jp2',
+		'jpm',
+		'jpx',
+		'heic',
+		'cur',
+		'dcm',
+	]);
+
+	async resizeFromBuffer(
+		input: Buffer,
+		width: number,
+		height: number,
+		keepType: boolean,
+		blur: boolean,
+		enlarge: boolean,
+		fit?: keyof FitEnum | undefined,
+	): Promise<ResizeResult> {
+		const stream = this.bufferToStream(input);
+		return this.resizeFromStream(stream, width, height, keepType, blur, enlarge, fit);
+	}
+
+	async resizeFromStream(
+		input: stream.Stream,
+		width: number,
+		height: number,
+		keepType: boolean,
+		blur: boolean,
+		enlarge: boolean,
+		fit?: keyof FitEnum | undefined,
+	): Promise<ResizeResult> {
+		const transformer = sharp({ limitInputChannels: 8 }).resize({ width, height, fit, withoutEnlargement: !enlarge });
+
+		if (!keepType) {
+			transformer.jpeg();
+		}
+
+		if (blur) {
+			transformer.blur();
+		}
+
+		const result = transformer.toBuffer({ resolveWithObject: true });
+		input.pipe(transformer);
+
+		const {
+			data,
+			info: { width: widthInfo, height: heightInfo },
+		} = await result;
+		return {
+			data,
+			width: widthInfo,
+			height: heightInfo,
+		};
+	}
+
+	async isImage(buff: Buffer): Promise<boolean> {
+		const data = await ft.fromBuffer(buff);
+		if (!data?.ext) {
+			return false || this.isSvgImage(buff);
+		}
+		return this.imageExts.has(data.ext) || this.isSvgImage(buff);
+	}
+
+	isSvgImage(buff: Buffer): boolean {
+		return isSvg(buff.toString('utf-8'));
+	}
+
+	stripExifFromBuffer(buffer: Buffer): Promise<Buffer> {
+		return streamToBuffer(this.stripExifFromImageStream(this.bufferToStream(buffer)));
+	}
+
+	stripExifFromImageStream(stream: stream.Stream): Readable {
+		return stream.pipe(new ExifTransformer());
+	}
+
+	private bufferToStream(buffer: Buffer): stream.PassThrough {
+		const bufferStream = new stream.PassThrough();
+		bufferStream.end(buffer);
+		return bufferStream;
+	}
+}

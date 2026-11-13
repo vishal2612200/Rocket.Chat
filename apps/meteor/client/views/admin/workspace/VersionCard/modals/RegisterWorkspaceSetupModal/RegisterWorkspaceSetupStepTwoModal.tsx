@@ -1,0 +1,125 @@
+import {
+	Box,
+	Field,
+	FieldLabel,
+	FieldRow,
+	Modal,
+	ModalClose,
+	ModalContent,
+	ModalFooter,
+	ModalHeader,
+	ModalHeaderText,
+	ModalTagline,
+	ModalTitle,
+	Stack,
+	Text,
+	TextInput,
+} from '@rocket.chat/fuselage';
+import { useEndpoint, useToastMessageDispatch } from '@rocket.chat/ui-contexts';
+import { useCallback, useEffect } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
+
+type Props = {
+	email: string;
+	step: number;
+	setStep: (step: number) => void;
+	onClose: () => void;
+	intentData: {
+		device_code: string;
+		interval: number;
+		user_code: string;
+	};
+	onSuccess: () => void;
+};
+
+const setIntervalTime = (interval?: number): number => (interval ? interval * 1000 : 0);
+
+const RegisterWorkspaceSetupStepTwoModal = ({ email, step, setStep, onClose, intentData, onSuccess, ...props }: Props) => {
+	const { t } = useTranslation();
+	const dispatchToastMessage = useToastMessageDispatch();
+
+	const cloudConfirmationPoll = useEndpoint('GET', '/v1/cloud.confirmationPoll');
+	const createRegistrationIntent = useEndpoint('POST', '/v1/cloud.createRegistrationIntent');
+
+	const handleBackFromConfirmation = (): void => setStep(step - 1);
+
+	const handleResendRegistrationEmail = async () => {
+		try {
+			await createRegistrationIntent({ resend: true, email });
+			dispatchToastMessage({ type: 'success', message: t('Email_sent') });
+		} catch (error: unknown) {
+			dispatchToastMessage({ type: 'error', message: error });
+		}
+	};
+
+	const getConfirmation = useCallback(async () => {
+		try {
+			const { pollData } = await cloudConfirmationPoll({
+				deviceCode: intentData.device_code,
+			});
+
+			if ('successful' in pollData && pollData.successful) {
+				dispatchToastMessage({ type: 'success', message: t('Workspace_registered') });
+				onSuccess();
+			}
+		} catch (error: any) {
+			console.log(error);
+		}
+	}, [cloudConfirmationPoll, intentData.device_code, dispatchToastMessage, t, onSuccess]);
+
+	useEffect(() => {
+		const pollInterval = setInterval(() => getConfirmation(), setIntervalTime(intentData.interval));
+
+		return (): void => clearInterval(pollInterval);
+	}, [getConfirmation, intentData]);
+
+	return (
+		<Modal {...props}>
+			<ModalHeader>
+				<ModalHeaderText>
+					<ModalTagline>{t('RegisterWorkspace_Setup_Steps', { step, numberOfSteps: 2 })}</ModalTagline>
+					<ModalTitle>{t('Awaiting_confirmation')}</ModalTitle>
+				</ModalHeaderText>
+				<ModalClose onClick={onClose} />
+			</ModalHeader>
+			<ModalContent>
+				<Trans i18nKey='cloud.RegisterWorkspace_Setup_Email_Confirmation'>
+					<Text is='p'>
+						Email sent to{' '}
+						<Text is='span' fontScale='p2b'>
+							{email}{' '}
+						</Text>
+						with a confirmation link.
+					</Text>
+				</Trans>
+				<Stack gap='x8'>
+					<Text is='p'>{t('RegisterWorkspace_Setup_Email_Verification')}</Text>
+					<Field>
+						<FieldLabel>{t('Security_code')}</FieldLabel>
+						<FieldRow>
+							<TextInput defaultValue={intentData.user_code} disabled />
+						</FieldRow>
+					</Field>
+				</Stack>
+			</ModalContent>
+			<ModalFooter justify='space-between'>
+				<Text fontScale='c1'>
+					<Stack direction='row'>
+						<Trans i18nKey='RegisterWorkspace_Didnt_Receive_Email'>
+							Didn't receive email?{' '}
+							<Box is='a' paddingInline='x4' onClick={handleResendRegistrationEmail}>
+								Resend
+							</Box>{' '}
+							or{' '}
+							<Box is='a' paddingInline='x4' onClick={handleBackFromConfirmation}>
+								change email
+							</Box>
+						</Trans>
+					</Stack>
+				</Text>
+			</ModalFooter>
+		</Modal>
+	);
+};
+
+export default RegisterWorkspaceSetupStepTwoModal;

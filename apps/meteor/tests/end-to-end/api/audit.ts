@@ -1,0 +1,440 @@
+import { after, before, describe, it } from 'node:test';
+
+import type { Credentials } from '@rocket.chat/api-client';
+import type { IRoom, IUser } from '@rocket.chat/core-typings';
+import { Random } from '@rocket.chat/random';
+import { expect } from 'chai';
+
+import { getCredentials, api, request, credentials } from '../../data/api-data';
+import { updatePermission } from '../../data/permissions.helper';
+import { createRoom, deleteRoom } from '../../data/rooms.helper';
+import { password } from '../../data/user';
+import { createUser, deleteUser, login } from '../../data/users.helper';
+import { IS_EE } from '../../e2e/config/constants';
+
+(IS_EE ? describe : describe.skip)('Audit Panel', () => {
+	let testChannel: IRoom;
+	let testPrivateChannel: IRoom;
+	let dummyUser: IUser;
+	let auditor: IUser;
+	let auditorCredentials: Credentials;
+	before((_t, done) => getCredentials(done));
+	before(async () => {
+		testChannel = (await createRoom({ type: 'c', name: `chat.api-test-${Date.now()}` })).body.channel;
+		testPrivateChannel = (await createRoom({ type: 'p', name: `chat.api-test-${Date.now()}` })).body.group;
+		dummyUser = await createUser();
+		auditor = await createUser({ roles: ['user', 'auditor'] });
+
+		auditorCredentials = await login(auditor.username, password);
+
+		// the auditor role has can-audit but not can-audit-log by default; grant it suite-wide for the audit.auditions cases
+		await updatePermission('can-audit-log', ['admin', 'auditor']);
+	});
+	after(async () => {
+		await updatePermission('can-audit-log', ['admin']);
+		await deleteRoom({ type: 'c', roomId: testChannel._id });
+		await deleteUser({ _id: dummyUser._id });
+		await deleteUser({ _id: auditor._id });
+		await deleteRoom({ type: 'p', roomId: testPrivateChannel._id });
+	});
+
+	describe('audit/rooms.members [no permissions]', () => {
+		before(async () => {
+			await updatePermission('view-members-list-all-rooms', []);
+		});
+		after(async () => {
+			await updatePermission('view-members-list-all-rooms', ['admin', 'auditor']);
+		});
+		it('should fail if user does not have view-members-list-all-rooms permission', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: 'GENERAL',
+				})
+				.expect(403);
+			await request
+				.get(api('audit/rooms.members'))
+				.set(auditorCredentials)
+				.query({
+					roomId: 'GENERAL',
+				})
+				.expect(403);
+		});
+	});
+
+	describe('audit/rooms.members', () => {
+		it('should fail if user is not logged in', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.query({
+					roomId: 'GENERAL',
+				})
+				.expect(401);
+		});
+		it('should fail if roomId is invalid', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: Random.id(),
+				})
+				.expect(404);
+		});
+		it('should fail if roomId is not present', async () => {
+			await request.get(api('audit/rooms.members')).set(credentials).query({}).expect(400);
+		});
+		it('should fail if roomId is an empty string', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: '',
+				})
+				.expect(400);
+		});
+		it('should fetch the members of a room', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: testChannel._id,
+				})
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body.members).to.be.an('array');
+					expect(res.body.members).to.have.lengthOf(1);
+				});
+		});
+		it('should persist a log entry', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: testChannel._id,
+				})
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body.members).to.be.an('array');
+					expect(res.body.members).to.have.lengthOf(1);
+				});
+
+			await request
+				.get(api('audit.auditions'))
+				.set(credentials)
+				.query({
+					startDate: new Date(Date.now() - 86400000).toISOString(),
+					endDate: new Date().toISOString(),
+				})
+				.expect('Content-Type', 'application/json')
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+
+					expect(res.body.auditions).to.be.an('array').with.lengthOf.greaterThan(1);
+					const entry = res.body.auditions.find((audition: any) => {
+						return audition.fields?.rids?.includes(testChannel._id);
+					});
+					expect(entry).to.have.property('u').that.is.an('object').deep.equal({
+						_id: 'rocketchat.internal.admin.test',
+						username: 'rocketchat.internal.admin.test',
+						name: 'RocketChat Internal Admin Test',
+					});
+					expect(entry).to.have.property('fields').that.is.an('object');
+					const { fields } = entry;
+
+					expect(fields).to.have.property('msg', 'Room_members_list');
+					expect(fields).to.have.property('rids').that.is.an('array').with.lengthOf(1);
+				});
+		});
+		it('should fetch the members of a room with offset and count', async () => {
+			await request
+				.post(api('channels.invite'))
+				.set(credentials)
+				.send({ roomId: testChannel._id, username: dummyUser.username })
+				.expect('Content-Type', 'application/json')
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+				});
+
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: testChannel._id,
+					offset: 1,
+					count: 1,
+				})
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body.members).to.be.an('array');
+					expect(res.body.members).to.have.lengthOf(1);
+					expect(res.body.members[0].username).to.be.equal(dummyUser.username);
+					expect(res.body.total).to.be.equal(2);
+					expect(res.body.offset).to.be.equal(1);
+					expect(res.body.count).to.be.equal(1);
+				});
+		});
+
+		it('should filter by username', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: testChannel._id,
+					filter: dummyUser.username,
+				})
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body.members).to.be.an('array');
+					expect(res.body.members).to.have.lengthOf(1);
+					expect(res.body.members[0].username).to.be.equal(dummyUser.username);
+				});
+		});
+
+		it('should filter by user name', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: testChannel._id,
+					filter: dummyUser.name,
+				})
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body.members).to.be.an('array');
+					expect(res.body.members).to.have.lengthOf(1);
+					expect(res.body.members[0].name).to.be.equal(dummyUser.name);
+				});
+		});
+
+		it('should sort by username', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: testChannel._id,
+					sort: '{ "username": -1 }',
+				})
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body.members).to.be.an('array');
+					expect(res.body.members).to.have.lengthOf(2);
+					expect(res.body.members[1].username).to.be.equal('rocketchat.internal.admin.test');
+					expect(res.body.members[0].username).to.be.equal(dummyUser.username);
+				});
+		});
+
+		it('should not allow nosqlinjection on filter param', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: testChannel._id,
+					filter: '{ "$ne": "rocketchat.internal.admin.test" }',
+				})
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body.members).to.be.an('array');
+					expect(res.body.members).to.have.lengthOf(0);
+				});
+
+			await request
+				.get(api('audit/rooms.members'))
+				.set(credentials)
+				.query({
+					roomId: testChannel._id,
+					filter: { username: 'rocketchat.internal.admin.test' },
+				})
+				.expect(400);
+		});
+
+		it('should allow to fetch info even if user is not in the room', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(auditorCredentials)
+				.query({
+					roomId: testChannel._id,
+				})
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body.members).to.be.an('array');
+					expect(res.body.members[0].username).to.be.equal('rocketchat.internal.admin.test');
+					expect(res.body.members[1].username).to.be.equal(dummyUser.username);
+					expect(res.body.total).to.be.equal(2);
+				});
+		});
+
+		it('should allow to fetch info from private rooms', async () => {
+			await request
+				.get(api('audit/rooms.members'))
+				.set(auditorCredentials)
+				.query({
+					roomId: testPrivateChannel._id,
+				})
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body.members).to.be.an('array');
+					expect(res.body.members[0].username).to.be.equal('rocketchat.internal.admin.test');
+					expect(res.body.total).to.be.equal(1);
+				});
+		});
+	});
+
+	describe('[/audit.auditions]', () => {
+		const startDate = new Date(0).toISOString();
+		const endDate = new Date().toISOString();
+
+		it('should fail if user is not logged in', async () => {
+			await request.get(api('audit.auditions')).query({ startDate, endDate }).expect(401);
+		});
+
+		it('should fail with 400 when startDate/endDate are missing', async () => {
+			await request.get(api('audit.auditions')).set(auditorCredentials).query({}).expect(400);
+		});
+
+		it('should fail with 400 when a date is invalid', async () => {
+			await request.get(api('audit.auditions')).set(auditorCredentials).query({ startDate: 'not-a-date', endDate }).expect(400);
+		});
+
+		it('should fail with 403 when the user lacks the can-audit-log permission', async () => {
+			await updatePermission('can-audit-log', []);
+			await request.get(api('audit.auditions')).set(auditorCredentials).query({ startDate, endDate }).expect(403);
+			await updatePermission('can-audit-log', ['admin', 'auditor']);
+		});
+
+		it('should return the list of auditions', async () => {
+			await request
+				.get(api('audit.auditions'))
+				.set(auditorCredentials)
+				.query({ startDate, endDate })
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body).to.have.property('auditions').that.is.an('array');
+				});
+		});
+	});
+
+	describe('[/audit.messages]', () => {
+		const startDate = new Date(0).toISOString();
+		const endDate = new Date().toISOString();
+
+		it('should fail if user is not logged in', async () => {
+			await request.post(api('audit.messages')).send({ startDate, endDate, users: [], msg: '', type: 'u' }).expect(401);
+		});
+
+		it('should fail with 400 when required params are missing', async () => {
+			await request.post(api('audit.messages')).set(auditorCredentials).send({ startDate, endDate }).expect(400);
+		});
+
+		it('should fail with 400 when a date is invalid', async () => {
+			await request
+				.post(api('audit.messages'))
+				.set(auditorCredentials)
+				.send({ startDate: 'not-a-date', endDate, users: [], msg: '', type: 'u' })
+				.expect(400);
+		});
+
+		it('should fail with 403 when the user lacks the can-audit permission', async () => {
+			await updatePermission('can-audit', []);
+			await request
+				.post(api('audit.messages'))
+				.set(auditorCredentials)
+				.send({ startDate, endDate, users: [], msg: '', type: 'u' })
+				.expect(403);
+			await updatePermission('can-audit', ['admin', 'auditor']);
+		});
+
+		it('should return matching messages', async () => {
+			await request
+				.post(api('audit.messages'))
+				.set(auditorCredentials)
+				.send({ startDate, endDate, users: [], msg: '', type: 'u' })
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body).to.have.property('messages').that.is.an('array');
+				});
+		});
+
+		it('should persist an audit log entry', async () => {
+			// query auditions with a future endDate so the entry created by the request below (ts = now) is in range
+			const auditionsRange = { startDate, endDate: new Date(Date.now() + 60000).toISOString() };
+			const before = await request.get(api('audit.auditions')).set(auditorCredentials).query(auditionsRange);
+			await request
+				.post(api('audit.messages'))
+				.set(auditorCredentials)
+				.send({ startDate, endDate, users: [], msg: '', type: 'u' })
+				.expect(200);
+			const after = await request.get(api('audit.auditions')).set(auditorCredentials).query(auditionsRange);
+			expect(after.body.auditions.length).to.be.greaterThan(before.body.auditions.length);
+		});
+	});
+
+	describe('[/audit.omnichannelMessages]', () => {
+		const startDate = new Date(0).toISOString();
+		const endDate = new Date().toISOString();
+
+		it('should fail if user is not logged in', async () => {
+			await request.post(api('audit.omnichannelMessages')).send({ startDate, endDate, users: [], msg: '', type: 'l' }).expect(401);
+		});
+
+		it('should fail with 400 when required params are missing', async () => {
+			await request.post(api('audit.omnichannelMessages')).set(auditorCredentials).send({ startDate, endDate }).expect(400);
+		});
+
+		it('should fail with 400 when a date is invalid', async () => {
+			await request
+				.post(api('audit.omnichannelMessages'))
+				.set(auditorCredentials)
+				.send({ startDate: 'not-a-date', endDate, users: [], msg: '', type: 'l' })
+				.expect(400);
+		});
+
+		it('should fail with 403 when the user lacks the can-audit permission', async () => {
+			await updatePermission('can-audit', []);
+			await request
+				.post(api('audit.omnichannelMessages'))
+				.set(auditorCredentials)
+				.send({ startDate, endDate, users: [], msg: '', type: 'l' })
+				.expect(403);
+			await updatePermission('can-audit', ['admin', 'auditor']);
+		});
+
+		it('should return matching omnichannel messages', async () => {
+			await request
+				.post(api('audit.omnichannelMessages'))
+				.set(auditorCredentials)
+				.send({ startDate, endDate, users: [], msg: '', type: 'l' })
+				.expect(200)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body).to.have.property('messages').that.is.an('array');
+				});
+		});
+
+		it('should persist an audit log entry', async () => {
+			// query auditions with a future endDate so the entry created by the request below (ts = now) is in range
+			const auditionsRange = { startDate, endDate: new Date(Date.now() + 60000).toISOString() };
+			const before = await request.get(api('audit.auditions')).set(auditorCredentials).query(auditionsRange);
+			await request
+				.post(api('audit.omnichannelMessages'))
+				.set(auditorCredentials)
+				.send({ startDate, endDate, users: [], msg: '', type: 'l' })
+				.expect(200);
+			const after = await request.get(api('audit.auditions')).set(auditorCredentials).query(auditionsRange);
+			expect(after.body.auditions.length).to.be.greaterThan(before.body.auditions.length);
+		});
+	});
+});

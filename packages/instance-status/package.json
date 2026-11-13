@@ -1,0 +1,36 @@
+{
+	"name": "@rocket.chat/instance-status",
+	"version": "0.1.62",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"main": "./dist/index.js",
+	"typings": "./dist/index.d.ts",
+	"files": [
+		"/dist"
+	],
+	"scripts": {
+		"build": "rm -rf dist && tsc -p tsconfig.json",
+		"dev": "tsc --watch --preserveWatchOutput -p tsconfig.json",
+		"lint": "yarn run -T oxlint",
+		"lint:fix": "yarn run -T oxlint --fix",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@rocket.chat/models": "workspace:^",
+		"@rocket.chat/tracing": "workspace:^"
+	},
+	"devDependencies": {
+		"@rocket.chat/tsconfig": "workspace:*",
+		"mongodb": "6.16.0",
+		"typescript": "~7.0.2"
+	},
+	"volta": {
+		"extends": "../../package.json"
+	}
+}

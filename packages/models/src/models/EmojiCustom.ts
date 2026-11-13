@@ -1,0 +1,121 @@
+import type { IEmojiCustom, RocketChatRecordDeleted } from '@rocket.chat/core-typings';
+import type { IEmojiCustomModel, InsertionModel, DocumentWithProjection, FindOptionsWithProjection } from '@rocket.chat/model-typings';
+import type { Collection, Filter, FindCursor, Db, IndexDescription, InsertOneResult, UpdateResult, WithId, Document } from 'mongodb';
+
+import { BaseRaw } from './BaseRaw';
+
+export class EmojiCustomRaw extends BaseRaw<IEmojiCustom> implements IEmojiCustomModel {
+	constructor(db: Db, trash?: Collection<RocketChatRecordDeleted<IEmojiCustom>>) {
+		super(db, 'custom_emoji', trash);
+	}
+
+	protected override modelIndexes(): IndexDescription[] {
+		return [{ key: { name: 1 } }, { key: { aliases: 1 } }, { key: { extension: 1 } }];
+	}
+
+	// find
+	findByNameOrAlias<T extends Document = IEmojiCustom, O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>>(
+		emojiName: string,
+		options?: O,
+	): FindCursor<DocumentWithProjection<T, O>> {
+		let name = emojiName;
+
+		if (typeof emojiName === 'string') {
+			name = emojiName.replaceAll(':', '');
+		}
+
+		const query = {
+			$or: [{ name }, { aliases: name }],
+		};
+
+		return this.find<T, O>(query, options);
+	}
+
+	findOneByNamesOrAliases<T extends Document = IEmojiCustom, O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>>(
+		names: string[],
+		exceptId?: string,
+		options?: O,
+	): Promise<DocumentWithProjection<T, O> | null> {
+		const query: Filter<IEmojiCustom> = {
+			...(exceptId && { _id: { $nin: [exceptId] } }),
+			$or: [{ name: { $in: names } }, { aliases: { $in: names } }],
+		};
+
+		return this.findOne<T, O>(query, options);
+	}
+
+	findByNameOrAliasExceptID<T extends Document = IEmojiCustom, O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>>(
+		name: string,
+		except: string,
+		options?: O,
+	): FindCursor<DocumentWithProjection<T, O>> {
+		const query = {
+			_id: { $nin: [except] },
+			$or: [{ name }, { aliases: name }],
+		};
+
+		return this.find<T, O>(query, options);
+	}
+
+	// update
+	setName(_id: string, name: string): Promise<UpdateResult> {
+		const update = {
+			$set: {
+				name,
+			},
+		};
+
+		return this.updateOne({ _id }, update);
+	}
+
+	setAliases(_id: string, aliases: string[]): Promise<UpdateResult> {
+		const update = {
+			$set: {
+				aliases,
+			},
+		};
+
+		return this.updateOne({ _id }, update);
+	}
+
+	setExtension(_id: string, extension: string): Promise<UpdateResult> {
+		const update = {
+			$set: {
+				extension,
+			},
+		};
+
+		return this.updateOne({ _id }, update);
+	}
+
+	setETagByName(name: string, etag: string): Promise<UpdateResult> {
+		const update = {
+			$set: {
+				etag,
+			},
+		};
+
+		return this.updateOne({ name }, update);
+	}
+
+	// INSERT
+	create(data: InsertionModel<IEmojiCustom>): Promise<InsertOneResult<WithId<IEmojiCustom>>> {
+		return this.insertOne(data);
+	}
+
+	countByNameOrAlias(name: string): Promise<number> {
+		const query = {
+			$or: [{ name }, { aliases: name }],
+		};
+
+		return this.countDocuments(query);
+	}
+
+	// TODO: convert name: string to branded type using to enforce validation also replace this type cross the models/apis
+	findOneByName<T extends Document = IEmojiCustom, O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>>(
+		name: string,
+		options?: O,
+	): Promise<DocumentWithProjection<T, O> | null> {
+		return this.findOne<T, O>({ name }, options);
+	}
+}

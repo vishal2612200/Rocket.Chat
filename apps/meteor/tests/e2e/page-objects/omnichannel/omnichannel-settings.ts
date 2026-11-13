@@ -1,0 +1,38 @@
+import type { Locator } from '@playwright/test';
+
+import { AdminSectionsHref } from '../admin';
+import { AdminSettingsSection } from '../admin-settings';
+
+export class OmnichannelSettings extends AdminSettingsSection {
+	protected readonly route = `${AdminSectionsHref.settings}/Omnichannel` as const;
+
+	protected readonly title = 'Omnichannel';
+
+	get labelLivechatLogo(): Locator {
+		return this.page.locator('//label[@title="Assets_livechat_widget_logo"]');
+	}
+
+	private get livechatLogo(): Locator {
+		return this.page.getByRole('group', { name: 'Livechat widget logo (svg, png, jpg)', exact: true });
+	}
+
+	get imgLivechatLogoPreview(): Locator {
+		return this.livechatLogo.getByRole('img', { name: 'Asset preview' });
+	}
+
+	get inputLivechatLogo(): Locator {
+		return this.livechatLogo.locator('input[type="file"]');
+	}
+
+	get btnDeleteLivechatLogo(): Locator {
+		return this.livechatLogo.getByRole('button', { name: 'Delete' });
+	}
+
+	group(sectionName: string): Locator {
+		return this.page.locator(`[data-qa-section="${sectionName}"] h2 >> text="${sectionName}"`);
+	}
+
+	get labelHideWatermark(): Locator {
+		return this.page.locator('label').getByText('Hide "powered by Rocket.Chat"');
+	}
+}

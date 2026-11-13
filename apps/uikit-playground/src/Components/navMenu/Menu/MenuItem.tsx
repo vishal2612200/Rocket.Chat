@@ -1,0 +1,32 @@
+import { css } from '@rocket.chat/css-in-js';
+import { Box } from '@rocket.chat/fuselage';
+import type { ComponentProps } from 'react';
+
+export type MenuItemProps = {
+	name: string;
+} & ComponentProps<typeof Box>;
+
+const MenuItem = ({ name, ...props }: MenuItemProps) => {
+	const pointer = css`
+		cursor: pointer;
+	`;
+
+	const style = css`
+		&:hover {
+			background-color: #1f2329;
+		}
+		&:active {
+			background-color: #6c727a;
+			opacity: 0.3;
+		}
+	`;
+	return (
+		<Box width='100%' height='28px' paddingBlock='4px' display='flex' alignItems='center' className={[pointer, style]} {...props}>
+			<Box className={pointer} color='hint' fontScale='p2'>
+				{name}
+			</Box>
+		</Box>
+	);
+};
+
+export default MenuItem;

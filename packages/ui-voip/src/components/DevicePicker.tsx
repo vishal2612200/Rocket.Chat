@@ -1,0 +1,49 @@
+import { useSelectedDevices } from '@rocket.chat/ui-contexts';
+import type { DeviceSelection } from '@rocket.chat/ui-media';
+import { DeviceMenu, DeviceMenuButton, DeviceSelectionProvider, useMediaDevices, useRevealDeviceLabels } from '@rocket.chat/ui-media';
+import { useTranslation } from 'react-i18next';
+
+import { useMediaCallView } from '../context/MediaCallViewContext';
+
+export type DevicePickerProps = { secondary?: boolean };
+
+/** The microphone and speaker of the voice call, chosen through the app's selected devices. */
+const DevicePicker = ({ secondary = false }: DevicePickerProps) => {
+	const { t } = useTranslation();
+	const { onDeviceChange } = useMediaCallView();
+	const { devices } = useMediaDevices();
+	const selectedDevices = useSelectedDevices();
+	const revealDeviceLabels = useRevealDeviceLabels();
+
+	const selection: DeviceSelection = {
+		devices,
+		selectedIds: { audioinput: selectedDevices?.audioInput?.id, audiooutput: selectedDevices?.audioOutput?.id },
+		select: (kind, deviceId) => {
+			const device = devices.find((device) => device.kind === kind && device.deviceId === deviceId);
+			if (device) {
+				onDeviceChange({ id: device.deviceId, label: device.label, type: device.kind });
+			}
+		},
+	};
+
+	return (
+		<DeviceSelectionProvider value={selection}>
+			<DeviceMenu
+				kinds={['audioinput', 'audiooutput']}
+				title={t('Device_settings_lowercase')}
+				placement='top-end'
+				beforeOpen={() => revealDeviceLabels(['audioinput', 'audiooutput'], devices)}
+				button={
+					<DeviceMenuButton
+						secondary={secondary}
+						size={secondary ? 'medium' : 'tiny'}
+						label={t('Device_settings_lowercase')}
+						menuIcon='customize'
+					/>
+				}
+			/>
+		</DeviceSelectionProvider>
+	);
+};
+
+export default DevicePicker;

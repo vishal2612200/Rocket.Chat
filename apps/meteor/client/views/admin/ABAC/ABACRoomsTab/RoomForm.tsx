@@ -1,0 +1,111 @@
+import { Box, Callout, Field, FieldLabel, FieldRow, FieldError, ButtonGroup, Button } from '@rocket.chat/fuselage';
+import { ContextualbarFooter, ContextualbarScrollableContent } from '@rocket.chat/ui-client';
+import type { Dispatch, SetStateAction } from 'react';
+import { useId } from 'react';
+import { Controller, useFieldArray, useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+
+import RoomFormAttributeFields from './RoomFormAttributeFields';
+import RoomFormAutocomplete from './RoomFormAutocomplete';
+import RoomFormAutocompleteDummy from './RoomFormAutocompleteDummy';
+
+export type RoomFormProps = {
+	onClose: () => void;
+	onSave: (data: RoomFormData) => void;
+	roomInfo?: { rid: string; name: string };
+	hasAttributeChanges?: boolean;
+	setSelectedRoomLabel: Dispatch<SetStateAction<string>>;
+	redacted?: boolean;
+};
+
+export type RoomFormData = {
+	room: string;
+	attributes: { key: string; values: string[] }[];
+};
+
+const RoomForm = ({ onClose, onSave, roomInfo, hasAttributeChanges = false, setSelectedRoomLabel, redacted = false }: RoomFormProps) => {
+	const {
+		control,
+		handleSubmit,
+		formState: { isValid, errors, isDirty },
+	} = useFormContext<RoomFormData>();
+
+	const { t } = useTranslation();
+	const formId = useId();
+	const nameField = useId();
+
+	const { fields, append, remove } = useFieldArray({
+		name: 'attributes',
+		control,
+	});
+
+	const canSubmit = roomInfo ? hasAttributeChanges : isDirty;
+
+	return (
+		<>
+			<ContextualbarScrollableContent is='form' onSubmit={handleSubmit(onSave)} id={formId}>
+				<Field>
+					<FieldLabel id={nameField} required>
+						{t('ABAC_Room_to_be_managed')}
+					</FieldLabel>
+					<FieldRow>
+						{roomInfo ? (
+							<RoomFormAutocompleteDummy roomInfo={roomInfo} />
+						) : (
+							<Controller
+								name='room'
+								control={control}
+								rules={{ required: t('Required_field', { field: t('ABAC_Room_to_be_managed') }) }}
+								render={({ field }) => (
+									<RoomFormAutocomplete
+										{...field}
+										error={!!errors.room?.message}
+										aria-labelledby={nameField}
+										aria-required='true'
+										aria-invalid={errors.room ? 'true' : 'false'}
+										aria-describedby={`${nameField}-error`}
+										onSelectedRoom={(value: string, label: string) => {
+											field.onChange(value);
+											setSelectedRoomLabel(label);
+										}}
+									/>
+								)}
+							/>
+						)}
+					</FieldRow>
+					{errors.room && (
+						<FieldError id={`${nameField}-error`} role='alert'>
+							{errors.room.message}
+						</FieldError>
+					)}
+				</Field>
+				{redacted && (
+					<Box marginBlockEnd={16}>
+						<Callout type='warning' title={t('ABAC_Attributes_Redacted')}>
+							{t('ABAC_Attributes_Redacted_Description')}
+						</Callout>
+					</Box>
+				)}
+				<RoomFormAttributeFields fields={fields} remove={remove} disabled={redacted} />
+				<Button
+					disabled={redacted || fields.length >= 10}
+					onClick={() => {
+						append({ key: '', values: [] });
+					}}
+				>
+					{t('ABAC_Add_Attribute')}
+				</Button>
+			</ContextualbarScrollableContent>
+			<ContextualbarFooter>
+				<ButtonGroup stretch>
+					<Button onClick={onClose}>{t('Cancel')}</Button>
+					<Button type='submit' form={formId} disabled={redacted || !isValid || !canSubmit} variant='primary'>
+						{roomInfo ? t('ABAC_Review_changes') : t('Save')}
+					</Button>
+				</ButtonGroup>
+			</ContextualbarFooter>
+		</>
+	);
+};
+
+export default RoomForm;

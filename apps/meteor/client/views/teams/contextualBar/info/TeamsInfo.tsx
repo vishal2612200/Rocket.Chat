@@ -1,0 +1,144 @@
+import type { IRoom } from '@rocket.chat/core-typings';
+import { Box, Button, Callout, IconButton } from '@rocket.chat/fuselage';
+import { RoomAvatar } from '@rocket.chat/ui-avatar';
+import {
+	GenericMenu,
+	ContextualbarHeader,
+	ContextualbarIcon,
+	ContextualbarTitle,
+	ContextualbarClose,
+	ContextualbarScrollableContent,
+	ContextualbarDialog,
+	InfoPanel,
+	InfoPanelAction,
+	InfoPanelActionGroup,
+	InfoPanelAvatar,
+	InfoPanelField,
+	InfoPanelLabel,
+	InfoPanelSection,
+	InfoPanelText,
+	InfoPanelTitle,
+} from '@rocket.chat/ui-client';
+import { useTranslation } from 'react-i18next';
+
+import { useTeamActions } from './useTeamActions';
+import RetentionPolicyCallout from '../../../../components/InfoPanel/RetentionPolicyCallout';
+import MarkdownText from '../../../../components/MarkdownText';
+import RoomInfoABACSection from '../../../room/contextualBar/Info/RoomInfo/ABAC/RoomInfoABACSection';
+import { useSplitRoomActions } from '../../../room/contextualBar/Info/hooks/useSplitRoomActions';
+import { useRetentionPolicy } from '../../../room/hooks/useRetentionPolicy';
+
+export type TeamsInfoProps = {
+	room: IRoom;
+	onClickEdit?: () => void;
+	onClickClose?: () => void;
+	onClickViewChannels: () => void;
+};
+
+const TeamsInfo = ({ room, onClickClose, onClickEdit, onClickViewChannels }: TeamsInfoProps) => {
+	const { t } = useTranslation();
+
+	const retentionPolicy = useRetentionPolicy(room);
+	const memoizedActions = useTeamActions(room, { onClickEdit });
+
+	const { buttons: actions, menu } = useSplitRoomActions(memoizedActions);
+
+	return (
+		<ContextualbarDialog>
+			<ContextualbarHeader>
+				<ContextualbarIcon name='info-circled' />
+				<ContextualbarTitle>{t('Teams_Info')}</ContextualbarTitle>
+				{onClickClose && <ContextualbarClose onClick={onClickClose} />}
+			</ContextualbarHeader>
+			<ContextualbarScrollableContent padding={24}>
+				<InfoPanel>
+					<InfoPanelSection maxWidth='x332' marginInline='auto'>
+						<InfoPanelAvatar>
+							<RoomAvatar size='x332' room={room} />
+						</InfoPanelAvatar>
+
+						<InfoPanelActionGroup>
+							{actions.items.map(({ id, content, icon, onClick }) => (
+								<InfoPanelAction key={id} label={content} onClick={onClick} icon={icon} />
+							))}
+							{menu && (
+								<GenericMenu
+									title={t('More')}
+									placement='bottom-end'
+									detached
+									button={<IconButton icon='kebab' variant='secondary' />}
+									sections={menu}
+								/>
+							)}
+						</InfoPanelActionGroup>
+					</InfoPanelSection>
+
+					<InfoPanelSection>
+						{room.archived && (
+							<Box marginBlock={16}>
+								<Callout type='warning'>{t('Room_archived')}</Callout>
+							</Box>
+						)}
+					</InfoPanelSection>
+
+					<InfoPanelSection>
+						<InfoPanelTitle title={room.fname || room.name || ''} icon='team' />
+					</InfoPanelSection>
+
+					<InfoPanelSection>
+						{room.broadcast && (
+							<InfoPanelField>
+								<InfoPanelLabel>
+									<b>{t('Broadcast_channel')}</b> {t('Broadcast_channel_Description')}
+								</InfoPanelLabel>
+							</InfoPanelField>
+						)}
+
+						{room.description && (
+							<InfoPanelField>
+								<InfoPanelLabel>{t('Description')}</InfoPanelLabel>
+								<InfoPanelText withTruncatedText={false}>
+									<MarkdownText variant='inline' content={room.description} />
+								</InfoPanelText>
+							</InfoPanelField>
+						)}
+
+						{room.announcement && (
+							<InfoPanelField>
+								<InfoPanelLabel>{t('Announcement')}</InfoPanelLabel>
+								<InfoPanelText withTruncatedText={false}>
+									<MarkdownText variant='inline' content={room.announcement} />
+								</InfoPanelText>
+							</InfoPanelField>
+						)}
+
+						{room.topic && (
+							<InfoPanelField>
+								<InfoPanelLabel>{t('Topic')}</InfoPanelLabel>
+								<InfoPanelText withTruncatedText={false}>
+									<MarkdownText variant='inline' content={room.topic} />
+								</InfoPanelText>
+							</InfoPanelField>
+						)}
+
+						{onClickViewChannels && (
+							<InfoPanelField>
+								<InfoPanelLabel>{t('Teams_channels')}</InfoPanelLabel>
+								<InfoPanelText>
+									<Button onClick={onClickViewChannels} size='small'>
+										{t('View_channels')}
+									</Button>
+								</InfoPanelText>
+							</InfoPanelField>
+						)}
+
+						{retentionPolicy?.isActive && <RetentionPolicyCallout room={room} />}
+						<RoomInfoABACSection room={room} />
+					</InfoPanelSection>
+				</InfoPanel>
+			</ContextualbarScrollableContent>
+		</ContextualbarDialog>
+	);
+};
+
+export default TeamsInfo;

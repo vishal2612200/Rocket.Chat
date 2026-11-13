@@ -1,0 +1,70 @@
+import type { AppPermission } from '@rocket.chat/core-typings';
+import { Text } from '@rocket.chat/fuselage';
+import { Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
+
+const defaultPermissions = [
+	'user.read',
+	'user.write',
+	'upload.read',
+	'upload.write',
+	'ui.interact',
+	'server-setting.read',
+	'server-setting.write',
+	'room.read',
+	'room.write',
+	'message.read',
+	'message.write',
+	'livechat-department.read',
+	'livechat-department.write',
+	'livechat-room.read',
+	'livechat-room.write',
+	'livechat-message.read',
+	'livechat-message.write',
+	'livechat-visitor.read',
+	'livechat-visitor.write',
+	'livechat-status.read',
+	'livechat-custom-fields.write',
+	'scheduler',
+	'networking',
+	'persistence',
+	'env.read',
+	'slashcommand',
+	'api',
+];
+
+export type AppPermissionsListProps = { appPermissions: AppPermission[] | undefined };
+
+const AppPermissionsList = ({ appPermissions }: AppPermissionsListProps) => {
+	const { t } = useTranslation();
+	const handleAppPermissions = (permission: string): string => t(`Apps_Permissions_${permission.replace('.', '_')}`);
+
+	if (appPermissions?.length) {
+		return (
+			<>
+				{appPermissions.map((permission) => (
+					<Fragment key={permission.name}>
+						<li>{handleAppPermissions(permission.name)}</li>
+						{permission.required && (
+							<Text is='span' color='status-font-on-danger'>
+								({t('required')})
+							</Text>
+						)}
+					</Fragment>
+				))}
+			</>
+		);
+	}
+
+	return (
+		<>
+			{defaultPermissions.map((permission) => (
+				<Fragment key={permission}>
+					<li>{handleAppPermissions(permission)}</li>
+				</Fragment>
+			))}
+		</>
+	);
+};
+
+export default AppPermissionsList;

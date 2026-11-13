@@ -1,0 +1,49 @@
+import type { PaginatedRequest } from '../../helpers/PaginatedRequest';
+import { ajvQuery } from '../Ajv';
+import { paginationQueryProperties } from '../pagination';
+
+export type ChannelsFilesListProps = PaginatedRequest<
+	({ roomId: string; roomName?: string } | { roomId?: string; roomName: string }) & {
+		name?: string;
+		typeGroup?: string;
+		onlyConfirmed?: boolean;
+	}
+>;
+
+const channelsFilesListPropsSchema = {
+	type: 'object',
+	properties: {
+		roomId: {
+			type: 'string',
+			nullable: true,
+		},
+		roomName: {
+			type: 'string',
+			nullable: true,
+		},
+		...paginationQueryProperties,
+		sort: {
+			type: 'string',
+			nullable: true,
+		},
+		name: {
+			type: 'string',
+			nullable: true,
+		},
+		typeGroup: {
+			type: 'string',
+			nullable: true,
+		},
+		onlyConfirmed: {
+			type: 'boolean',
+		},
+	},
+	oneOf: [
+		{ type: 'object', required: ['roomId'] },
+		{ type: 'object', required: ['roomName'] },
+	],
+	required: [],
+	additionalProperties: false,
+};
+
+export const isChannelsFilesListProps = ajvQuery.compile<ChannelsFilesListProps>(channelsFilesListPropsSchema);

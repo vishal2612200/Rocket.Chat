@@ -1,0 +1,344 @@
+import { faker } from '@faker-js/faker';
+
+import { Users } from './fixtures/userStates';
+import { HomeChannel } from './page-objects';
+import { createTargetPrivateChannel, createTargetTeam, deleteChannel, deleteTeam } from './utils';
+import { test, expect } from './utils/test';
+
+test.use({ storageState: Users.admin.state });
+
+const getMentionText = (username: string, kind?: number): string => {
+	if (kind === 1) {
+		return `You mentioned ${username}, but they're not in this room.`;
+	}
+	if (kind === 2) {
+		return `You mentioned ${username}, but they're not in this room. You can ask a room admin to add them.`;
+	}
+	if (kind === 3) {
+		return `You mentioned ${username}, but they're not in this room. You let them know via DM.`;
+	}
+	return `Hello @${username}, how are you`;
+};
+
+test.describe.serial('Should not allow to send @all mention if permission to do so is disabled', () => {
+	let poHomeChannel: HomeChannel;
+
+	test.beforeEach(async ({ page }) => {
+		poHomeChannel = new HomeChannel(page);
+
+		await poHomeChannel.goto();
+	});
+
+	let targetChannel2: string;
+	test.beforeAll(async ({ api }) => {
+		expect((await api.post('/permissions.update', { permissions: [{ _id: 'mention-all', roles: [] }] })).status()).toBe(200);
+	});
+
+	test.afterAll(async ({ api }) => {
+		expect(
+			(
+				await api.post('/permissions.update', { permissions: [{ _id: 'mention-all', roles: ['admin', 'owner', 'moderator', 'user'] }] })
+			).status(),
+		).toBe(200);
+		await deleteChannel(api, targetChannel2);
+	});
+
+	test('expect to receive an error as notification when sending @all while permission is disabled', async ({ page }) => {
+		const adminPage = new HomeChannel(page);
+
+		await test.step('create private room', async () => {
+			targetChannel2 = faker.string.uuid();
+
+			await poHomeChannel.navbar.createNew('Channel', targetChannel2);
+			await expect(page).toHaveURL(`/group/${targetChannel2}`);
+		});
+		await test.step('receive notify message', async () => {
+			await adminPage.content.sendMessage('@all ', false);
+			await expect(adminPage.content.lastUserMessage).toContainText('Notify all in this room is not allowed');
+		});
+	});
+});
+
+test.describe.serial('Should not allow to send @here mention if permission to do so is disabled', () => {
+	let poHomeChannel: HomeChannel;
+
+	test.beforeEach(async ({ page }) => {
+		poHomeChannel = new HomeChannel(page);
+
+		await poHomeChannel.goto();
+	});
+
+	let targetChannel2: string;
+	test.beforeAll(async ({ api }) => {
+		expect((await api.post('/permissions.update', { permissions: [{ _id: 'mention-here', roles: [] }] })).status()).toBe(200);
+	});
+
+	test.afterAll(async ({ api }) => {
+		expect(
+			(
+				await api.post('/permissions.update', { permissions: [{ _id: 'mention-here', roles: ['admin', 'owner', 'moderator', 'user'] }] })
+			).status(),
+		).toBe(200);
+		await deleteChannel(api, targetChannel2);
+	});
+
+	test('expect to receive an error as notification when sending here while permission is disabled', async ({ page }) => {
+		const adminPage = new HomeChannel(page);
+
+		await test.step('create private room', async () => {
+			targetChannel2 = faker.string.uuid();
+
+			await poHomeChannel.navbar.createNew('Channel', targetChannel2);
+			await expect(page).toHaveURL(`/group/${targetChannel2}`);
+		});
+		await test.step('receive notify message', async () => {
+			await adminPage.content.sendMessage('@here ', false);
+			await expect(adminPage.content.lastUserMessage).toContainText('Notify all in this room is not allowed');
+		});
+	});
+});
+
+test.describe.serial('message-mentions', () => {
+	let poHomeChannel: HomeChannel;
+
+	test.beforeEach(async ({ page }) => {
+		poHomeChannel = new HomeChannel(page);
+
+		await poHomeChannel.goto();
+	});
+
+	test('expect show "all" and "here" options', async () => {
+		await poHomeChannel.navbar.openChat('general');
+		await poHomeChannel.composer.inputMessage.type('@');
+
+		await expect(poHomeChannel.content.messagePopupUsers.getByRole('option', { name: '@all' })).toBeVisible();
+		await expect(poHomeChannel.content.messagePopupUsers.getByRole('option', { name: '@here' })).toBeVisible();
+	});
+
+	test.describe('users not in channel', () => {
+		let targetChannel: string;
+		let targetChannel2: string;
+		test.beforeAll(async ({ api }) => {
+			targetChannel = await createTargetPrivateChannel(api);
+		});
+
+		test.afterAll(async ({ api }) => {
+			await deleteChannel(api, targetChannel);
+		});
+
+		test('all actions', async ({ page }) => {
+			const adminPage = new HomeChannel(page);
+			const mentionText = getMentionText(Users.user1.data.username, 1);
+
+			await test.step('receive bot message', async () => {
+				await adminPage.navbar.openChat(targetChannel);
+				await adminPage.content.sendMessage(getMentionText(Users.user1.data.username));
+				await expect(adminPage.content.lastUserMessage.locator('.rcx-message-block')).toContainText(mentionText);
+			});
+
+			await test.step('show "Do nothing" action', async () => {
+				await expect(adminPage.content.getLastMessageActionButton('Do nothing')).toBeVisible();
+			});
+			await test.step('show "Add them" action', async () => {
+				await expect(adminPage.content.getLastMessageActionButton('Add them')).toBeVisible();
+			});
+			await test.step('show "Let them know" action', async () => {
+				await expect(adminPage.content.getLastMessageActionButton('Let them know')).toBeVisible();
+			});
+
+			await test.step('dismiss', async () => {
+				await adminPage.content.getLastMessageActionButton('Do nothing').click();
+			});
+
+			await test.step('receive second bot message', async () => {
+				await adminPage.content.sendMessage(getMentionText(Users.user1.data.username));
+				await expect(adminPage.content.lastUserMessage.locator('.rcx-message-block')).toContainText(mentionText);
+			});
+			await test.step('send message to users', async () => {
+				await adminPage.content.getLastMessageActionButton('Let them know').click();
+				await expect(adminPage.content.lastUserMessageBody).toContainText(getMentionText(Users.user1.data.username, 3));
+			});
+
+			await test.step('receive third bot message', async () => {
+				await adminPage.content.sendMessage(getMentionText(Users.user1.data.username));
+				await expect(adminPage.content.lastUserMessage.locator('.rcx-message-block')).toContainText(mentionText);
+			});
+			await test.step('add users to room', async () => {
+				await adminPage.content.getLastMessageActionButton('Add them').click();
+				await expect(adminPage.content.lastSystemMessageBody).toContainText('added');
+			});
+		});
+
+		test('should show non-member mention warning inside threads', async ({ page }) => {
+			const adminPage = new HomeChannel(page);
+			const mentionText = getMentionText(Users.user2.data.username, 1);
+
+			await test.step('open thread', async () => {
+				await adminPage.navbar.openChat(targetChannel);
+				await adminPage.content.sendMessage('thread parent for non-member mention warning');
+				await adminPage.content.openReplyInThread();
+				await adminPage.content.waitForThread();
+			});
+
+			await test.step('receive bot message inside thread', async () => {
+				await adminPage.content.sendMessageInThread(getMentionText(Users.user2.data.username));
+				await expect(adminPage.content.lastUserThreadMessage).toContainText(mentionText);
+			});
+
+			await test.step('show actions inside thread', async () => {
+				await expect(adminPage.content.getLastThreadMessageActionButton('Do nothing')).toBeVisible();
+				await expect(adminPage.content.getLastThreadMessageActionButton('Add them')).toBeVisible();
+				await expect(adminPage.content.getLastThreadMessageActionButton('Let them know')).toBeVisible();
+			});
+		});
+
+		test.describe(() => {
+			test.use({ storageState: Users.user1.state });
+
+			test('dismiss and share message actions', async ({ page }) => {
+				const mentionText = getMentionText(Users.user2.data.username, 1);
+				const userPage = new HomeChannel(page);
+
+				await test.step('receive bot message', async () => {
+					await userPage.navbar.openChat(targetChannel);
+					await userPage.content.sendMessage(getMentionText(Users.user2.data.username));
+					await expect(userPage.content.lastUserMessage.locator('.rcx-message-block')).toContainText(mentionText);
+				});
+
+				await test.step('show "Do nothing" action', async () => {
+					await expect(userPage.content.getLastMessageActionButton('Do nothing')).toBeVisible();
+				});
+				await test.step('show "Let them know" action', async () => {
+					await expect(userPage.content.getLastMessageActionButton('Let them know')).toBeVisible();
+				});
+				await test.step('not show "Add them action', async () => {
+					await expect(userPage.content.getLastMessageActionButton('Add them')).not.toBeVisible();
+				});
+
+				await test.step('dismiss', async () => {
+					await userPage.content.getLastMessageActionButton('Do nothing').click();
+				});
+
+				await test.step('receive second bot message', async () => {
+					await userPage.navbar.openChat(targetChannel);
+					await userPage.content.sendMessage(getMentionText(Users.user2.data.username));
+					await expect(userPage.content.lastUserMessage.locator('.rcx-message-block')).toContainText(mentionText);
+				});
+				await test.step('send message to users', async () => {
+					await userPage.content.getLastMessageActionButton('Let them know').click();
+					await expect(userPage.content.lastUserMessageBody).toContainText(getMentionText(Users.user2.data.username, 3));
+				});
+			});
+		});
+
+		test.describe(() => {
+			test.use({ storageState: Users.user1.state });
+			test.beforeAll(async ({ api }) => {
+				expect((await api.post('/permissions.update', { permissions: [{ _id: 'create-d', roles: ['admin'] }] })).status()).toBe(200);
+			});
+
+			test.afterAll(async ({ api }) => {
+				expect(
+					(await api.post('/permissions.update', { permissions: [{ _id: 'create-d', roles: ['admin', 'user', 'bot', 'app'] }] })).status(),
+				).toBe(200);
+			});
+
+			test('dismiss and add users actions', async ({ page }) => {
+				const mentionText = getMentionText(Users.user2.data.username, 1);
+				const userPage = new HomeChannel(page);
+
+				await test.step('create private room', async () => {
+					targetChannel2 = faker.string.uuid();
+
+					await poHomeChannel.navbar.createNew('Channel', targetChannel2);
+					await expect(page).toHaveURL(`/group/${targetChannel2}`);
+				});
+
+				await test.step('receive bot message', async () => {
+					await userPage.navbar.openChat(targetChannel2);
+					await userPage.content.sendMessage(getMentionText(Users.user2.data.username));
+					await expect(userPage.content.lastUserMessage.locator('.rcx-message-block')).toContainText(mentionText);
+				});
+				await test.step('show "Do nothing" action', async () => {
+					await expect(userPage.content.getLastMessageActionButton('Do nothing')).toBeVisible();
+				});
+				await test.step('show "Add them" action', async () => {
+					await expect(userPage.content.getLastMessageActionButton('Add them')).toBeVisible();
+				});
+				await test.step('not show "Let them know" action', async () => {
+					await expect(userPage.content.getLastMessageActionButton('Let them know')).not.toBeVisible();
+				});
+
+				await test.step('dismiss', async () => {
+					await userPage.content.getLastMessageActionButton('Do nothing').click();
+				});
+
+				await test.step('receive second bot message', async () => {
+					await userPage.navbar.openChat(targetChannel2);
+					await userPage.content.sendMessage(getMentionText(Users.user2.data.username));
+					await expect(userPage.content.lastUserMessage.locator('.rcx-message-block')).toContainText(mentionText);
+				});
+				await test.step('add users to room', async () => {
+					await userPage.content.getLastMessageActionButton('Add them').click();
+					await expect(userPage.content.lastSystemMessageBody).toContainText('added');
+				});
+			});
+		});
+
+		test.describe(() => {
+			test.use({ storageState: Users.user2.state });
+			test.beforeAll(async ({ api }) => {
+				expect((await api.post('/permissions.update', { permissions: [{ _id: 'create-d', roles: ['admin'] }] })).status()).toBe(200);
+			});
+
+			test.afterAll(async ({ api }) => {
+				expect(
+					(await api.post('/permissions.update', { permissions: [{ _id: 'create-d', roles: ['admin', 'user', 'bot', 'app'] }] })).status(),
+				).toBe(200);
+			});
+			test('no actions', async ({ page }) => {
+				const userPage = new HomeChannel(page);
+
+				await test.step('receive bot message', async () => {
+					await userPage.navbar.openChat(targetChannel2);
+					await userPage.content.sendMessage(getMentionText(Users.user3.data.username));
+					await expect(userPage.content.lastUserMessage.locator('.rcx-message-block')).toContainText(
+						getMentionText(Users.user3.data.username, 2),
+					);
+				});
+
+				await test.step('not show "Do nothing" action', async () => {
+					await expect(userPage.content.getLastMessageActionButton('Do nothing')).not.toBeVisible();
+				});
+				await test.step('not show "Add them" action', async () => {
+					await expect(userPage.content.getLastMessageActionButton('Add them')).not.toBeVisible();
+				});
+				await test.step('not show "Let them know" action', async () => {
+					await expect(userPage.content.getLastMessageActionButton('Let them know')).not.toBeVisible();
+				});
+			});
+		});
+
+		test.describe('team mention', () => {
+			let team: string;
+			test.use({ storageState: Users.user1.state });
+			test.beforeAll(async ({ api }) => {
+				team = await createTargetTeam(api);
+			});
+
+			test.afterAll(async ({ api }) => {
+				await deleteTeam(api, team);
+			});
+
+			test('should not receive bot message', async ({ page }) => {
+				const userPage = new HomeChannel(page);
+
+				await test.step('do not receive bot message', async () => {
+					await userPage.navbar.openChat(targetChannel);
+					await userPage.content.sendMessage(getMentionText(team));
+					await expect(userPage.content.lastUserMessage.locator('.rcx-message-block')).not.toBeVisible();
+				});
+			});
+		});
+	});
+});

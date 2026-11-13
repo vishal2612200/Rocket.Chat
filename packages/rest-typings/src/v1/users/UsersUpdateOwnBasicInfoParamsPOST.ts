@@ -1,0 +1,79 @@
+import type { IUserPhoneNumber } from '@rocket.chat/core-typings';
+
+import { ajv } from '../Ajv';
+import { phonesSchema } from './phonesSchema';
+
+export type UsersUpdateOwnBasicInfoParamsPOST = {
+	data: {
+		email?: string;
+		name?: string;
+		username?: string;
+		nickname?: string;
+		bio?: string;
+		statusText?: string;
+		statusType?: string;
+		currentPassword?: string;
+		newPassword?: string;
+		phones?: IUserPhoneNumber[];
+	};
+	customFields?: Record<string, unknown>;
+};
+
+const UsersUpdateOwnBasicInfoParamsPostSchema = {
+	type: 'object',
+	properties: {
+		data: {
+			type: 'object',
+			properties: {
+				email: {
+					type: 'string',
+					nullable: true,
+				},
+				name: {
+					type: 'string',
+					nullable: true,
+				},
+				username: {
+					type: 'string',
+					nullable: true,
+				},
+				nickname: {
+					type: 'string',
+					nullable: true,
+				},
+				bio: {
+					type: 'string',
+					nullable: true,
+				},
+				statusType: {
+					type: 'string',
+					nullable: true,
+				},
+				statusText: {
+					type: 'string',
+					nullable: true,
+				},
+				currentPassword: {
+					type: 'string',
+					nullable: true,
+				},
+				newPassword: {
+					type: 'string',
+					nullable: true,
+					maxLength: 256,
+				},
+				phones: phonesSchema,
+			},
+			required: [],
+			additionalProperties: false,
+		},
+		customFields: {
+			type: 'object',
+			nullable: true,
+		},
+	},
+	required: ['data'],
+	additionalProperties: false,
+};
+
+export const isUsersUpdateOwnBasicInfoParamsPOST = ajv.compile<UsersUpdateOwnBasicInfoParamsPOST>(UsersUpdateOwnBasicInfoParamsPostSchema);

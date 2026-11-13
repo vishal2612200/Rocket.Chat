@@ -1,0 +1,46 @@
+import { Box, Button } from '@rocket.chat/fuselage';
+import * as UiKit from '@rocket.chat/ui-kit';
+import { memo, useCallback, useMemo, useState } from 'react';
+
+import Action from './ActionsBlock.Action';
+import { useSurfaceType } from '../hooks/useSurfaceType';
+import type { BlockProps } from '../utils/BlockProps';
+
+export type ActionsBlockProps = BlockProps<UiKit.ActionsBlock>;
+
+const ActionsBlock = ({ className, block, surfaceRenderer }: ActionsBlockProps) => {
+	const surfaceType = useSurfaceType();
+
+	const [showMoreVisible, setShowMoreVisible] = useState(() => block.elements.length > 5 && surfaceType !== 'banner');
+
+	const handleShowMoreClick = useCallback(() => {
+		setShowMoreVisible(false);
+	}, []);
+
+	const actionElements = useMemo(
+		() =>
+			(showMoreVisible ? block.elements.slice(0, 5) : block.elements).map((element) => ({
+				...element,
+				appId: element.appId ?? block.appId,
+				blockId: element.blockId ?? block.blockId,
+			})),
+		[block.appId, block.blockId, block.elements, showMoreVisible],
+	);
+
+	return (
+		<Box className={className} display='flex' flexWrap='wrap' gap='x8'>
+			{actionElements.map((element, i) => (
+				<Action key={i} element={element} parser={surfaceRenderer} index={i} />
+			))}
+			{showMoreVisible && (
+				<Box display='flex'>
+					<Button size='small' onClick={handleShowMoreClick}>
+						{surfaceRenderer.renderTextObject({ type: 'plain_text', text: 'Show more...' }, 0, UiKit.BlockContext.NONE)}
+					</Button>
+				</Box>
+			)}
+		</Box>
+	);
+};
+
+export default memo(ActionsBlock);

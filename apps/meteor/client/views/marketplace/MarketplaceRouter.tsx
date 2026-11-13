@@ -1,0 +1,46 @@
+import { PageSkeleton } from '@rocket.chat/ui-client';
+import { useAtLeastOnePermission, useRoute, useRouteParameter } from '@rocket.chat/ui-contexts';
+import type { ReactNode } from 'react';
+import { Suspense, useEffect } from 'react';
+
+import MarketPlaceSidebar from './MarketplaceSidebar';
+import SidebarPortal from '../../portals/SidebarPortal';
+import NotFoundPage from '../notFound/NotFoundPage';
+
+export type MarketplaceRouterProps = { children?: ReactNode };
+
+const MarketplaceRouter = ({ children }: MarketplaceRouterProps) => {
+	const currentContext = useRouteParameter('context') || 'all';
+	const marketplaceRoute = useRoute('marketplace');
+	const canAccessMarketplace = useAtLeastOnePermission(['access-marketplace', 'manage-apps']);
+
+	useEffect(() => {
+		const initialize = async () => {
+			// The currentContext === 'all' verification is for users who bookmarked
+			// the old marketplace
+			// TODO: Remove the all verification in the future;
+			if (currentContext === 'all') {
+				marketplaceRoute.replace({ context: 'explore', page: 'list' });
+			}
+		};
+
+		initialize();
+	}, [currentContext, marketplaceRoute]);
+
+	if (!canAccessMarketplace) {
+		return <NotFoundPage />;
+	}
+
+	return children ? (
+		<>
+			<Suspense fallback={<PageSkeleton />}>{children}</Suspense>
+			<SidebarPortal>
+				<MarketPlaceSidebar />
+			</SidebarPortal>
+		</>
+	) : (
+		<PageSkeleton />
+	);
+};
+
+export default MarketplaceRouter;

@@ -1,0 +1,38 @@
+import { useSession } from '@rocket.chat/ui-contexts';
+import type { LoginRoutes } from '@rocket.chat/ui-registration';
+import RegistrationRoute from '@rocket.chat/ui-registration';
+import type { ReactNode } from 'react';
+import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import LoggedOutBanner from '../../../components/deviceManagement/LoggedOutBanner';
+import { useIframe } from '../hooks/useIframe';
+
+export type LoginPageProps = { defaultRoute?: LoginRoutes; children?: ReactNode };
+
+const LoginPage = ({ defaultRoute, children }: LoginPageProps) => {
+	const { t } = useTranslation();
+	const showForcedLogoutBanner = useSession('forceLogout') as boolean | undefined;
+	const { iframeLoginUrl, tryLogin, enabled: iframeEnabled } = useIframe();
+
+	useEffect(() => {
+		if (!iframeEnabled) {
+			return;
+		}
+
+		tryLogin();
+	}, [tryLogin, iframeEnabled]);
+
+	if (iframeLoginUrl) {
+		return <iframe title={t('Login')} src={iframeLoginUrl} style={{ height: '100%', width: '100%' }} />;
+	}
+
+	return (
+		<>
+			{showForcedLogoutBanner && <LoggedOutBanner />}
+			<RegistrationRoute defaultRoute={defaultRoute}>{children}</RegistrationRoute>
+		</>
+	);
+};
+
+export default LoginPage;

@@ -1,0 +1,24 @@
+import type { IRocketChatRecord } from './IRocketChatRecord';
+
+export interface IOmnichannelBusinessUnit extends IRocketChatRecord {
+	name: string;
+	visibility: 'public' | 'private';
+	type: string;
+	numMonitors: number;
+	numDepartments: number;
+	// Units don't have ancestors per se, but we need TS to know it can access the property from the collection
+	ancestors?: string[];
+}
+
+export type OmnichannelBusinessUnitPayload = {
+	unitData: {
+		name: string;
+		visibility: string;
+		enabled?: boolean;
+		description?: string;
+		email?: string;
+		showOnOfflineForm?: boolean;
+	};
+	unitMonitors: { monitorId: string; username: string }[];
+	unitDepartments: { departmentId: string }[];
+};

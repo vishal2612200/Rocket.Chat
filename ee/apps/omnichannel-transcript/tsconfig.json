@@ -1,0 +1,11 @@
+{
+	"extends": "@rocket.chat/tsconfig/server.json",
+	"compilerOptions": {
+		"rootDir": "./src",
+		"strictPropertyInitialization": false,
+		"rootDir": "./src",
+		"outDir": "./dist/ee/apps/omnichannel-transcript/src",
+	},
+	"include": ["./src", "../../../apps/meteor/definition/externals/meteor"],
+	"exclude": ["./dist"]
+}

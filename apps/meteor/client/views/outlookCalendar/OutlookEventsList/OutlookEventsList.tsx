@@ -1,0 +1,113 @@
+import { Box, States, StatesIcon, StatesTitle, StatesSubtitle, ButtonGroup, Button, Throbber } from '@rocket.chat/fuselage';
+import { useMergedRefs, useResizeObserver } from '@rocket.chat/fuselage-hooks';
+import {
+	VirtualizedScrollbars,
+	ContextualbarHeader,
+	ContextualbarIcon,
+	ContextualbarTitle,
+	ContextualbarClose,
+	ContextualbarContent,
+	ContextualbarFooter,
+	ContextualbarDialog,
+} from '@rocket.chat/ui-client';
+import { useUser } from '@rocket.chat/ui-contexts';
+import { useTranslation } from 'react-i18next';
+import { Virtuoso } from 'react-virtuoso';
+
+import OutlookEventItem from './OutlookEventItem';
+import { useItemListNavigation } from '../../../hooks/useItemListNavigation';
+import { getErrorMessage } from '../../../lib/errorHandling';
+import { useOutlookAuthentication } from '../hooks/useOutlookAuthentication';
+import { useMutationOutlookCalendarSync, useOutlookCalendarListForToday } from '../hooks/useOutlookCalendarList';
+import { NotOnDesktopError } from '../lib/NotOnDesktopError';
+
+export type OutlookEventsListProps = {
+	onClose: () => void;
+	changeRoute: () => void;
+};
+
+const OutlookEventsList = ({ onClose, changeRoute }: OutlookEventsListProps) => {
+	const { t } = useTranslation();
+	const user = useUser();
+	const { authEnabled, isError, error } = useOutlookAuthentication();
+
+	const hasOutlookMethods = !(isError && error instanceof NotOnDesktopError);
+
+	const syncOutlookCalendar = useMutationOutlookCalendarSync();
+
+	const calendarListResult = useOutlookCalendarListForToday();
+
+	const { ref, contentBoxSize: { inlineSize = 378, blockSize = 1 } = {} } = useResizeObserver<HTMLElement>({
+		debounceDelay: 200,
+	});
+	const listNavigationRef = useItemListNavigation();
+	const eventsListRef = useMergedRefs(ref, listNavigationRef);
+
+	const calendarEvents = calendarListResult.data;
+	const total = calendarEvents?.length || 0;
+
+	const outlookUrl = user?.settings?.calendar?.outlook?.Outlook_Url;
+
+	return (
+		<ContextualbarDialog>
+			<ContextualbarHeader>
+				<ContextualbarIcon name='calendar' />
+				<ContextualbarTitle>{t('Outlook_calendar')}</ContextualbarTitle>
+				<ContextualbarClose onClick={onClose} />
+			</ContextualbarHeader>
+			<ContextualbarContent flush>
+				<Box flexGrow={1} flexShrink={1} overflow='hidden' display='flex' justifyContent='center' ref={eventsListRef}>
+					{calendarListResult.isPending && <Throbber size='x12' />}
+					{calendarListResult.isError && (
+						<States>
+							<StatesIcon name='circle-exclamation' variation='danger' />
+							<StatesTitle>{t('Something_went_wrong')}</StatesTitle>
+							<StatesSubtitle>{getErrorMessage(calendarListResult.error)}</StatesSubtitle>
+						</States>
+					)}
+					{!calendarListResult.isPending && total === 0 && (
+						<States>
+							<StatesIcon name='calendar' />
+							<StatesTitle>{t('No_history')}</StatesTitle>
+						</States>
+					)}
+					{calendarListResult.isSuccess && calendarListResult.data.length > 0 && (
+						<VirtualizedScrollbars>
+							<Virtuoso
+								style={{
+									height: blockSize,
+									width: inlineSize,
+								}}
+								totalCount={total}
+								overscan={25}
+								data={calendarEvents}
+								itemContent={(_index, calendarData) => <OutlookEventItem {...calendarData} />}
+							/>
+						</VirtualizedScrollbars>
+					)}
+				</Box>
+			</ContextualbarContent>
+			<ContextualbarFooter>
+				<ButtonGroup stretch>
+					{authEnabled && <Button onClick={changeRoute}>{t('Calendar_settings')}</Button>}
+					{outlookUrl && (
+						<Button icon='new-window' onClick={() => window.open(outlookUrl, '_blank')}>
+							{t('Open_Outlook')}
+						</Button>
+					)}
+				</ButtonGroup>
+				{hasOutlookMethods && (
+					<Box marginBlockStart={8}>
+						<ButtonGroup stretch>
+							<Button variant='primary' loading={syncOutlookCalendar.isPending} onClick={() => syncOutlookCalendar.mutate()}>
+								{authEnabled ? t('Sync') : t('Log_in_to_sync')}
+							</Button>
+						</ButtonGroup>
+					</Box>
+				)}
+			</ContextualbarFooter>
+		</ContextualbarDialog>
+	);
+};
+
+export default OutlookEventsList;

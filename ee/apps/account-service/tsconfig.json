@@ -1,0 +1,21 @@
+{
+	"extends": "@rocket.chat/tsconfig/server.json",
+	"compilerOptions": {
+		"rootDir": "./src",
+		"incremental": true,
+
+		/* Strict Type-Checking Options */
+		"strictPropertyInitialization": false,
+		"strictFunctionTypes": false,
+
+		/* Additional Checks */
+		"noFallthroughCasesInSwitch": false,
+
+		"rootDir": "./src",
+		"outDir": "./dist/ee/apps/account-service/src",
+	},
+	"include": 
+	  ["./src/**/*.ts",
+	   "../../../apps/meteor/definition/externals/meteor"],
+	"exclude": ["./dist"]
+}

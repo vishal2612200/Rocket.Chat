@@ -1,0 +1,189 @@
+import {
+	MessageDivider,
+	Message,
+	MessageLeftContainer,
+	MessageContainer,
+	MessageHeader,
+	MessageName,
+	MessageUsername,
+	MessageRole,
+	MessageTimestamp,
+	MessageBody,
+	Avatar,
+	Box,
+} from '@rocket.chat/fuselage';
+import type { Meta, StoryObj } from '@storybook/react';
+
+import { VideoConfMessage, VideoConfMessageIcon, VideoConfMessageRow, VideoConfMessageText } from '.';
+import VideoConfMessageAction from './VideoConfMessageAction';
+import VideoConfMessageActions from './VideoConfMessageActions';
+import VideoConfMessageButton from './VideoConfMessageButton';
+import VideoConfMessageContent from './VideoConfMessageContent';
+import VideoConfMessageFooter from './VideoConfMessageFooter';
+import VideoConfMessageFooterText from './VideoConfMessageFooterText';
+import VideoConfMessageSkeleton from './VideoConfMessageSkeleton';
+import VideoConfMessageUserStack from './VideoConfMessageUserStack';
+
+export default {
+	component: VideoConfMessage,
+	decorators: [
+		(Story) => (
+			<Box>
+				<MessageDivider>May, 24, 2020</MessageDivider>
+				<Message className='customclass'>
+					<MessageLeftContainer>
+						<Avatar alt='' url={avatarUrl} size='x36' />
+					</MessageLeftContainer>
+					<MessageContainer>
+						<MessageHeader>
+							<MessageName>Haylie George</MessageName>
+							<MessageUsername>@haylie.george</MessageUsername>
+							<MessageRole>Admin</MessageRole>
+							<MessageRole>User</MessageRole>
+							<MessageRole>Owner</MessageRole>
+							<MessageTimestamp>12:00 PM</MessageTimestamp>
+						</MessageHeader>
+						<MessageBody>
+							<Story />
+						</MessageBody>
+					</MessageContainer>
+				</Message>
+			</Box>
+		),
+	],
+} satisfies Meta<typeof VideoConfMessage>;
+
+const avatarUrl =
+	'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAoACgDASIAAhEBAxEB/8QAGwAAAgIDAQAAAAAAAAAAAAAAAAcEBgIDBQj/xAAuEAACAQQAAwcEAQUAAAAAAAABAgMABAUREiExBhMUIkFRYQcWcYGhFTJSgpH/xAAYAQADAQEAAAAAAAAAAAAAAAACAwQBAP/EAB4RAAIBBQEBAQAAAAAAAAAAAAABAgMREiExE0HR/9oADAMBAAIRAxEAPwBuXuIkhBuMe5ib/AHQP49q4L3mLitryTLTSpOiHQI5k/HzXa/qbFOEudVTu1dumWvcTaNCZYZ7vU6g6LxqjOU/24dfs1Ouh9FnkMpd3Reeyx83hAxZZEhkdV9/MBrX71WGPvJcqrJBGveKATtuXXqNU0pu02bTHXD/AGvJAluyxxRd6F4x00o+NdKoVrjbzJdvVe1t5cVLc2ck8qjnohgpPtz2v7G6JtPQ2VJwjlcw+37mchpnK6GtIuv5NFWeTsLNPvxWTvpfjvOEfwKKzEVkSct2vscS/BIzSN0YRkeX81UpPqO8masJETu7OOccY4dswYFQeftv096XV5knuJGdm2T1+agvMXj8jEaHX905QihabvcbuS7X566mLWLwSY8PuRnk/u4eZ0deTl71Ef6hY+0yM88TzeNZY4luYwpVYyduOfrvhPTnr0pXSX9y5mCsyJMdyxxvwq599em+taItqCSNc90ChvZRUruUcT0JiO18Elpk7t8v41LWzacxkBSuvjQ/FFJayjDWrCTepAQ2vUH0oo/Jk3ovpwJJeVCP5CN+lFFaaMqy+nAyuChvrTI2kN9JAsi2ZOy4IBHMnkSCP+iqBexSWdxLazoUljJVlPUH2oorkV10pRc7b1zXb/hZOzuJvM86QWEXeELxOzHSIPcmiiiunVlF2RNTpRkrs//Z';
+
+const fakeUsers = Array.from({ length: 10 }).map((_, i) => ({
+	username: `user${i}`,
+	ts: new Date().toISOString(),
+	name: `User ${i}`,
+	_id: `id${i}`,
+	avatarETag: '',
+}));
+
+export const CallingDM: StoryObj<typeof VideoConfMessage> = {
+	render: () => (
+		<VideoConfMessage>
+			<VideoConfMessageRow>
+				<VideoConfMessageContent>
+					<VideoConfMessageIcon variant='incoming' />
+					<VideoConfMessageText>Calling...</VideoConfMessageText>
+				</VideoConfMessageContent>
+				<VideoConfMessageActions>
+					<VideoConfMessageAction aria-label='info' icon='info' />
+				</VideoConfMessageActions>
+			</VideoConfMessageRow>
+			<VideoConfMessageFooter>
+				<VideoConfMessageButton variant='primary'>Join</VideoConfMessageButton>
+				<VideoConfMessageFooterText>Waiting for answer</VideoConfMessageFooterText>
+			</VideoConfMessageFooter>
+		</VideoConfMessage>
+	),
+};
+
+export const CallEndedDM: StoryObj<typeof VideoConfMessage> = {
+	render: () => (
+		<VideoConfMessage>
+			<VideoConfMessageRow>
+				<VideoConfMessageContent>
+					<VideoConfMessageIcon />
+					<VideoConfMessageText>Call ended</VideoConfMessageText>
+				</VideoConfMessageContent>
+				<VideoConfMessageActions>
+					<VideoConfMessageAction aria-label='info' icon='info' />
+				</VideoConfMessageActions>
+			</VideoConfMessageRow>
+			<VideoConfMessageFooter>
+				<VideoConfMessageButton>Call Back</VideoConfMessageButton>
+				<VideoConfMessageFooterText>Call was not answered</VideoConfMessageFooterText>
+			</VideoConfMessageFooter>
+		</VideoConfMessage>
+	),
+};
+
+export const CallOngoing: StoryObj<typeof VideoConfMessage> = {
+	render: () => (
+		<VideoConfMessage>
+			<VideoConfMessageRow>
+				<VideoConfMessageContent>
+					<VideoConfMessageIcon variant='outgoing' />
+					<VideoConfMessageText>Call ongoing</VideoConfMessageText>
+				</VideoConfMessageContent>
+				<VideoConfMessageActions>
+					<VideoConfMessageAction aria-label='info' icon='info' />
+				</VideoConfMessageActions>
+			</VideoConfMessageRow>
+			<VideoConfMessageFooter>
+				<VideoConfMessageButton variant='primary'>Join</VideoConfMessageButton>
+				<VideoConfMessageUserStack users={fakeUsers} showAvatars={false} showRealName={false} />
+				<VideoConfMessageFooterText>joined</VideoConfMessageFooterText>
+			</VideoConfMessageFooter>
+		</VideoConfMessage>
+	),
+};
+
+export const CallEnded: StoryObj<typeof VideoConfMessage> = {
+	render: () => (
+		<VideoConfMessage>
+			<VideoConfMessageRow>
+				<VideoConfMessageContent>
+					<VideoConfMessageIcon />
+					<VideoConfMessageText>Call ended</VideoConfMessageText>
+				</VideoConfMessageContent>
+				<VideoConfMessageActions>
+					<VideoConfMessageAction aria-label='info' icon='info' />
+				</VideoConfMessageActions>
+			</VideoConfMessageRow>
+			<VideoConfMessageFooter>
+				<VideoConfMessageUserStack users={fakeUsers} showAvatars={false} showRealName={false} />
+				<VideoConfMessageFooterText>joined</VideoConfMessageFooterText>
+			</VideoConfMessageFooter>
+		</VideoConfMessage>
+	),
+};
+
+export const Loading: StoryObj<typeof VideoConfMessage> = {
+	render: () => <VideoConfMessageSkeleton />,
+};
+
+export const NoAvatars: StoryObj<typeof VideoConfMessage> = {
+	render: () => (
+		<VideoConfMessage>
+			<VideoConfMessageRow>
+				<VideoConfMessageContent>
+					<VideoConfMessageIcon variant='outgoing' />
+					<VideoConfMessageText>Call ongoing</VideoConfMessageText>
+				</VideoConfMessageContent>
+				<VideoConfMessageActions>
+					<VideoConfMessageAction aria-label='info' icon='info' />
+				</VideoConfMessageActions>
+			</VideoConfMessageRow>
+			<VideoConfMessageFooter>
+				<VideoConfMessageButton variant='primary'>Join</VideoConfMessageButton>
+				<VideoConfMessageUserStack users={fakeUsers} showAvatars={false} showRealName={false} />
+				<VideoConfMessageFooterText>{fakeUsers.length} joined</VideoConfMessageFooterText>
+			</VideoConfMessageFooter>
+		</VideoConfMessage>
+	),
+};
+
+export const UserStackWithAvatars: StoryObj<typeof VideoConfMessage> = {
+	render: () => (
+		<VideoConfMessage>
+			<VideoConfMessageRow>
+				<VideoConfMessageContent>
+					<VideoConfMessageIcon variant='outgoing' />
+					<VideoConfMessageText>Call ongoing</VideoConfMessageText>
+				</VideoConfMessageContent>
+			</VideoConfMessageRow>
+			<VideoConfMessageFooter>
+				<VideoConfMessageButton variant='primary'>Join</VideoConfMessageButton>
+				<VideoConfMessageUserStack users={fakeUsers} showAvatars showRealName={false} />
+				<VideoConfMessageFooterText>{fakeUsers.length} joined</VideoConfMessageFooterText>
+			</VideoConfMessageFooter>
+		</VideoConfMessage>
+	),
+};

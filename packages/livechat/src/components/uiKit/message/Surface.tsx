@@ -1,0 +1,30 @@
+import type { ComponentChildren } from 'preact';
+import { createContext } from 'preact';
+import { memo, useContext } from 'preact/compat';
+
+type SurfaceContextValue = {
+	dispatchAction: (args: { appId: any; actionId: any; payload: any }) => Promise<unknown> | void;
+};
+
+const SurfaceContext = createContext<SurfaceContextValue>({
+	dispatchAction: () => undefined,
+});
+
+export type SurfaceProps = {
+	children: ComponentChildren;
+	dispatchAction: (action: any) => Promise<unknown> | void;
+};
+
+const Surface = ({ children, dispatchAction }: SurfaceProps) => (
+	<SurfaceContext.Provider
+		value={{
+			dispatchAction,
+		}}
+	>
+		{children}
+	</SurfaceContext.Provider>
+);
+
+export const useDispatchAction = () => useContext(SurfaceContext).dispatchAction;
+
+export default memo(Surface);

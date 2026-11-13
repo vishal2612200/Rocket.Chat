@@ -1,0 +1,170 @@
+import {
+	Pagination,
+	States,
+	StatesAction,
+	StatesActions,
+	StatesIcon,
+	StatesTitle,
+	Box,
+	Button,
+	type TableColumnWidth,
+} from '@rocket.chat/fuselage';
+import { useDebouncedValue, useStableCallback } from '@rocket.chat/fuselage-hooks';
+import {
+	GenericTable,
+	GenericTableHeader,
+	GenericTableBody,
+	GenericTableHeaderCell,
+	GenericTableLoadingTable,
+	usePagination,
+	useSort,
+	GenericNoResults,
+	links,
+} from '@rocket.chat/ui-client';
+import { hashKey } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import ContactTableRow from './ContactTableRow';
+import { useCurrentContacts } from './hooks/useCurrentContacts';
+import FilterByText from '../../../../components/FilterByText';
+import { useOmnichannelDirectoryRouter } from '../hooks/useOmnichannelDirectoryRouter';
+
+function ContactTable() {
+	const { t } = useTranslation();
+
+	const [term, setTerm] = useState('');
+	const omnichannelDirectoryRouter = useOmnichannelDirectoryRouter();
+
+	const { sortBy, sortDirection, setSort } = useSort<'name' | 'channels.lastChat.ts' | 'contactManager.username' | 'lastChat.ts'>('name');
+
+	const query = useDebouncedValue(
+		useMemo(
+			() => ({
+				searchText: term,
+				sort: `{ "${sortBy}": ${sortDirection === 'asc' ? 1 : -1} }`,
+			}),
+			[sortBy, sortDirection, term],
+		),
+		500,
+	);
+
+	const onButtonNewClick = useStableCallback(() =>
+		omnichannelDirectoryRouter.navigate({
+			tab: 'contacts',
+			context: 'new',
+		}),
+	);
+
+	const { current, itemsPerPage, setItemsPerPage, setCurrent, ...paginationProps } = usePagination({ resetKey: [query] });
+	const { data, isLoading, isError, isSuccess, refetch } = useCurrentContacts(query, { offset: current, count: itemsPerPage });
+
+	const [defaultQuery] = useState(hashKey([query, current, itemsPerPage]));
+	const queryHasChanged = defaultQuery !== hashKey([query, current, itemsPerPage]);
+
+	const columns: TableColumnWidth[] = ['auto', 'auto', 'auto', 'auto', 40];
+
+	const headers = (
+		<>
+			<GenericTableHeaderCell key='name' direction={sortDirection} active={sortBy === 'name'} onClick={setSort} sort='name'>
+				{t('Name')}
+			</GenericTableHeaderCell>
+			<GenericTableHeaderCell
+				key='lastChannel'
+				direction={sortDirection}
+				active={sortBy === 'channels.lastChat.ts'}
+				onClick={setSort}
+				sort='channels.lastChat.ts'
+			>
+				{t('Last_channel')}
+			</GenericTableHeaderCell>
+			<GenericTableHeaderCell
+				key='contactManager'
+				direction={sortDirection}
+				active={sortBy === 'contactManager.username'}
+				onClick={setSort}
+				sort='contactManager.username'
+			>
+				{t('Contact_Manager')}
+			</GenericTableHeaderCell>
+			<GenericTableHeaderCell
+				key='lastchat'
+				direction={sortDirection}
+				active={sortBy === 'lastChat.ts'}
+				onClick={setSort}
+				sort='lastChat.ts'
+			>
+				{t('Last_Chat')}
+			</GenericTableHeaderCell>
+			<GenericTableHeaderCell key='spacer' />
+		</>
+	);
+
+	return (
+		<>
+			{((isSuccess && data?.contacts.length > 0) || queryHasChanged) && (
+				<FilterByText value={term} onChange={(event) => setTerm(event.target.value)}>
+					<Button onClick={onButtonNewClick} variant='primary'>
+						{t('New_contact')}
+					</Button>
+				</FilterByText>
+			)}
+			{isLoading && (
+				<GenericTable columns={columns}>
+					<GenericTableHeader>{headers}</GenericTableHeader>
+					<GenericTableBody>
+						<GenericTableLoadingTable headerCells={headers.props.children.filter(Boolean).length} />
+					</GenericTableBody>
+				</GenericTable>
+			)}
+			{isSuccess && data?.contacts.length === 0 && queryHasChanged && <GenericNoResults />}
+			{isSuccess && data?.contacts.length === 0 && !queryHasChanged && (
+				<GenericNoResults
+					icon='user-plus'
+					title={t('No_contacts_yet')}
+					description={t('No_contacts_yet_description')}
+					buttonTitle={t('New_contact')}
+					buttonAction={onButtonNewClick}
+					linkHref={links.go.omnichannelDocs}
+					linkText={t('Learn_more_about_contacts')}
+				/>
+			)}
+			{isSuccess && data?.contacts.length > 0 && (
+				<>
+					<GenericTable columns={columns} aria-label={t('Omnichannel_Contact_Center_Contacts')}>
+						<GenericTableHeader>{headers}</GenericTableHeader>
+						<GenericTableBody>
+							{data?.contacts.map((contact) => (
+								<ContactTableRow key={contact._id} {...contact} />
+							))}
+						</GenericTableBody>
+					</GenericTable>
+					<Pagination
+						divider
+						current={current}
+						itemsPerPage={itemsPerPage}
+						count={data?.total}
+						onSetItemsPerPage={setItemsPerPage}
+						onSetCurrent={setCurrent}
+						{...paginationProps}
+					/>
+				</>
+			)}
+			{isError && (
+				<Box marginBlockStart={20}>
+					<States>
+						<StatesIcon variation='danger' name='circle-exclamation' />
+						<StatesTitle>{t('Connection_error')}</StatesTitle>
+						<StatesActions>
+							<StatesAction icon='reload' onClick={() => refetch()}>
+								{t('Reload_page')}
+							</StatesAction>
+						</StatesActions>
+					</States>
+				</Box>
+			)}
+		</>
+	);
+}
+
+export default ContactTable;

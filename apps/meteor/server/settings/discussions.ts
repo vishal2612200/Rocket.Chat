@@ -1,0 +1,15 @@
+import { settingsRegistry } from '.';
+import { mustBeDisabledWhileSettingsAreEnabled } from './functions/validationRuleBuilders';
+
+export const createDiscussionsSettings = () =>
+	settingsRegistry.addGroup('Discussion', async function () {
+		// the channel for which discussions are created if none is explicitly chosen
+
+		await this.add('Discussion_enabled', true, {
+			group: 'Discussion',
+			i18nLabel: 'Enable',
+			type: 'boolean',
+			public: true,
+			validation: [mustBeDisabledWhileSettingsAreEnabled('ABAC_Enabled', 'ABAC_Enforce_All_Rooms')],
+		});
+	});

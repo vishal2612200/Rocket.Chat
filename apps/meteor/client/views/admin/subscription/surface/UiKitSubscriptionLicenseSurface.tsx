@@ -1,0 +1,27 @@
+import { createSurfaceRenderer, Surface, FuselageSurfaceRenderer, renderTextObject } from '@rocket.chat/fuselage-ui-kit';
+import type { CalloutBlock, ContextBlock, DividerBlock, ImageBlock, SectionBlock } from '@rocket.chat/ui-kit';
+import type { ReactNode } from 'react';
+
+export type SubscriptionLicenseSurfaceProps = {
+	children?: ReactNode;
+};
+
+type SubscriptionLicenseLayoutBlock = ContextBlock | DividerBlock | ImageBlock | SectionBlock | CalloutBlock;
+
+export type SubscriptionLicenseLayout = SubscriptionLicenseLayoutBlock[];
+
+const SubscriptionLicenseSurface = ({ children }: SubscriptionLicenseSurfaceProps) => <Surface type='custom'>{children}</Surface>;
+
+export class SubscriptionLicenseSurfaceRenderer extends FuselageSurfaceRenderer {
+	public constructor() {
+		super(['context', 'divider', 'image', 'section', 'callout']);
+	}
+
+	override plain_text = renderTextObject;
+
+	override mrkdwn = renderTextObject;
+}
+
+export default SubscriptionLicenseSurface;
+
+export const UiKitSubscriptionLicenseSurface = createSurfaceRenderer(SubscriptionLicenseSurface, new SubscriptionLicenseSurfaceRenderer());

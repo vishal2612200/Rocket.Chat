@@ -1,0 +1,21 @@
+import debounce from 'lodash.debounce';
+
+import { initCustomOAuthServices } from '../../ee/server/lib/oauth/initCustomOAuthServices';
+import { removeOAuthService } from '../lib/oauth/removeOAuthService';
+import { updateOAuthServices } from '../lib/oauth/updateOAuthServices';
+import type { ICachedSettings } from '../settings/CachedSettings';
+
+export async function configureOAuth(settings: ICachedSettings): Promise<void> {
+	const _updateOAuthServices = debounce(updateOAuthServices, 2000);
+	settings.watchByRegex(/^Accounts_OAuth_.+/, () => {
+		return _updateOAuthServices();
+	});
+
+	settings.watchByRegex(/^Accounts_OAuth_Custom-[a-z0-9_]+/, (key, value) => {
+		if (!value) {
+			return removeOAuthService(key);
+		}
+	});
+
+	await initCustomOAuthServices();
+}

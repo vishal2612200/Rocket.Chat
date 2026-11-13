@@ -1,0 +1,61 @@
+import { AutoComplete, Box, Chip, Option } from '@rocket.chat/fuselage';
+import { useDebouncedValue } from '@rocket.chat/fuselage-hooks';
+import { ITEM_MEDIA_SIZE, UserAvatar } from '@rocket.chat/ui-avatar';
+import type * as UiKit from '@rocket.chat/ui-kit';
+import { useCallback, useState } from 'react';
+
+import { useUsersData } from './hooks/useUsersData';
+import { useAutoCompleteKey } from '../../hooks/useAutoCompleteKey';
+import { useUiKitState } from '../../hooks/useUiKitState';
+import type { BlockProps } from '../../utils/BlockProps';
+
+export type UsersSelectElementProps = BlockProps<UiKit.UsersSelectElement>;
+
+export type UserAutoCompleteOptionType = {
+	value: string;
+	label: string;
+};
+
+const UsersSelectElement = ({ block, context }: UsersSelectElementProps) => {
+	const [{ value, loading }, action] = useUiKitState(block, context);
+
+	const [filter, setFilter] = useState('');
+	const debouncedFilter = useDebouncedValue(filter, 300);
+
+	const data = useUsersData({ filter: debouncedFilter, selected: value ? [value] : [] });
+	const autoCompleteKey = useAutoCompleteKey(value, data);
+
+	const handleChange = useCallback(
+		(value: string | string[]) => {
+			if (!Array.isArray(value)) void action({ target: { value } });
+		},
+		[action],
+	);
+
+	return (
+		<AutoComplete
+			key={autoCompleteKey}
+			autoFocus={block.focus_on_load}
+			value={value}
+			placeholder={block.placeholder?.text}
+			disabled={loading}
+			options={data}
+			onChange={handleChange}
+			filter={filter}
+			setFilter={setFilter}
+			renderSelected={({ selected: { value, label } }) => (
+				<Chip value={value}>
+					<UserAvatar size='x20' username={value} />
+					<Box verticalAlign='middle' is='span' margin='none' marginInline={4}>
+						{label}
+					</Box>
+				</Chip>
+			)}
+			renderItem={({ value, label, ...props }) => (
+				<Option key={value} {...props} label={label} avatar={<UserAvatar username={value} size={ITEM_MEDIA_SIZE.condensed} />} />
+			)}
+		/>
+	);
+};
+
+export default UsersSelectElement;

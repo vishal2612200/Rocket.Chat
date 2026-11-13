@@ -1,0 +1,273 @@
+import { SetupWizardRoute } from '@rocket.chat/ui-setup-wizard';
+import { createElement, lazy, useEffect } from 'react';
+
+import { appLayout } from '../lib/appLayout';
+import { preloadedLazy } from '../lib/preloadedLazy';
+import { router } from '../providers/RouterProvider';
+import OAuthTwoFactorAuthenticationRouter from '../views/OAuthTwoFactorAuthentication/OAuthTwoFactorAuthenticationRouter';
+import MainLayout from '../views/root/MainLayout';
+
+const IndexRoute = lazy(() => import('../views/root/IndexRoute'));
+// the route most sessions land on
+const HomePage = preloadedLazy(() => import('../views/home/HomePage'));
+const DirectoryPage = lazy(() => import('../views/directory'));
+const OmnichannelDirectoryRouter = lazy(() => import('../views/omnichannel/directory/OmnichannelDirectoryRouter'));
+const OmnichannelQueueList = lazy(() => import('../views/omnichannel/queueList'));
+const CMSPage = lazy(() => import('@rocket.chat/ui-registration').then(({ CMSPage }) => ({ default: CMSPage })));
+const SecretURLPage = lazy(() => import('../views/invite/SecretURLPage'));
+const InvitePage = lazy(() => import('../views/invite/InvitePage'));
+const ConferenceRoute = lazy(() => import('../views/conference/ConferenceRoute'));
+const MailerUnsubscriptionPage = lazy(() => import('../views/mailer/MailerUnsubscriptionPage'));
+const LoginTokenRoute = lazy(() => import('../views/root/LoginTokenRoute'));
+const SAMLLoginRoute = lazy(() => import('../views/root/SAMLLoginRoute'));
+const ResetPasswordPage = lazy(() =>
+	import('@rocket.chat/ui-registration').then(({ ResetPasswordPage }) => ({ default: ResetPasswordPage })),
+);
+const OAuthAuthorizationPage = lazy(() => import('../views/oauth/OAuthAuthorizationPage'));
+const OAuthErrorPage = lazy(() => import('../views/oauth/OAuthErrorPage'));
+const NotFoundPage = lazy(() => import('../views/notFound/NotFoundPage'));
+const CallHistoryPage = lazy(() => import('../views/mediaCallHistory/CallHistoryPage'));
+const SidebarRailCallPanel = lazy(() => import('../sidebar/SidebarRail/SidebarRailCallPanel'));
+const SearchPage = lazy(() => import('../views/search/SearchPage'));
+
+declare module '@rocket.chat/ui-contexts' {
+	interface IRouterPaths {
+		'index': {
+			pathname: '/';
+			pattern: '/';
+		};
+		'login': {
+			pathname: '/login';
+			pattern: '/login';
+		};
+		'meet': {
+			pathname: `/meet/${string}`;
+			pattern: '/meet/:rid';
+		};
+		'2fa': {
+			pathname: `/2fa/${string}/${string}`;
+			pattern: '/2fa/:method/:challengeId';
+		};
+		'home': {
+			pathname: '/home';
+			pattern: '/home';
+		};
+		'directory': {
+			pathname: `/directory${`/${'users' | 'channels' | 'teams' | 'external'}` | ''}`;
+			pattern: '/directory/:tab?';
+		};
+		'omnichannel-directory': {
+			pathname: `/omnichannel-directory${`/${string}` | ''}${`/${string}` | ''}${`/${string}` | ''}`;
+			pattern: '/omnichannel-directory/:tab?/:context?/:id?';
+		};
+		'livechat-queue': {
+			pathname: '/livechat-queue';
+			pattern: '/livechat-queue';
+		};
+		'terms-of-service': {
+			pathname: '/terms-of-service';
+			pattern: '/terms-of-service';
+		};
+		'privacy-policy': {
+			pathname: '/privacy-policy';
+			pattern: '/privacy-policy';
+		};
+		'legal-notice': {
+			pathname: '/legal-notice';
+			pattern: '/legal-notice';
+		};
+		'register-secret-url': {
+			pathname: `/register/${string}`;
+			pattern: '/register/:hash';
+		};
+		'invite': {
+			pathname: `/invite/${string}`;
+			pattern: '/invite/:hash';
+		};
+		'conference': {
+			pathname: `/conference/${string}`;
+			pattern: '/conference/:id';
+		};
+		'mailer-unsubscribe': {
+			pathname: `/mailer/unsubscribe/${string}/${string}`;
+			pattern: '/mailer/unsubscribe/:_id/:createdAt';
+		};
+		'tokenLogin': {
+			pathname: `/login-token/${string}`;
+			pattern: '/login-token/:token';
+		};
+		'resetPassword': {
+			pathname: `/reset-password/${string}`;
+			pattern: '/reset-password/:token';
+		};
+		'oauth/authorize': {
+			pathname: `/oauth/authorize`;
+			pattern: '/oauth/authorize';
+		};
+		'oauth/error': {
+			pathname: `/oauth/error/${string}`;
+			pattern: '/oauth/error/:error';
+		};
+		'saml': {
+			pathname: `/saml/${string}`;
+			pattern: '/saml/:token';
+		};
+		'call-history': {
+			pathname: `/call-history${`/details/${string}` | ''}`;
+			pattern: '/call-history/:tab?/:historyId?';
+		};
+		'search': {
+			pathname: '/search';
+			pattern: '/search';
+		};
+	}
+}
+
+router.defineRoutes([
+	{
+		path: '/',
+		id: 'index',
+		element: appLayout.wrap(<IndexRoute />),
+	},
+	{
+		path: '/login',
+		id: 'login',
+		element: createElement(() => {
+			useEffect(() => {
+				router.navigate('/home');
+			}, []);
+
+			return null;
+		}),
+	},
+	{
+		path: '/2fa/:method/:challengeId',
+		id: '2fa',
+		element: appLayout.wrap(<OAuthTwoFactorAuthenticationRouter />),
+	},
+	{
+		path: '/home',
+		id: 'home',
+		element: appLayout.wrap(
+			<MainLayout>
+				<HomePage />
+			</MainLayout>,
+		),
+	},
+	{
+		path: '/directory/:tab?',
+		id: 'directory',
+		element: appLayout.wrap(
+			<MainLayout>
+				<DirectoryPage />
+			</MainLayout>,
+		),
+	},
+	{
+		path: '/omnichannel-directory/:tab?/:context?/:id?',
+		id: 'omnichannel-directory',
+		element: appLayout.wrap(
+			<MainLayout>
+				<OmnichannelDirectoryRouter />
+			</MainLayout>,
+		),
+	},
+	{
+		path: '/livechat-queue',
+		id: 'livechat-queue',
+		element: appLayout.wrap(
+			<MainLayout>
+				<OmnichannelQueueList />
+			</MainLayout>,
+		),
+	},
+	{
+		path: '/terms-of-service',
+		id: 'terms-of-service',
+		element: appLayout.wrap(<CMSPage page='Layout_Terms_of_Service' />),
+	},
+	{
+		path: '/privacy-policy',
+		id: 'privacy-policy',
+		element: appLayout.wrap(<CMSPage page='Layout_Privacy_Policy' />),
+	},
+	{
+		path: '/legal-notice',
+		id: 'legal-notice',
+		element: appLayout.wrap(<CMSPage page='Layout_Legal_Notice' />),
+	},
+	{
+		path: '/register/:hash',
+		id: 'register-secret-url',
+		element: appLayout.wrap(<SecretURLPage />),
+	},
+	{
+		path: '/invite/:hash',
+		id: 'invite',
+		element: appLayout.wrap(<InvitePage />),
+	},
+	{
+		path: '/conference/:id',
+		id: 'conference',
+		element: appLayout.wrap(<ConferenceRoute />, { standalone: true }),
+	},
+	{
+		path: '/setup-wizard/:step?',
+		id: 'setup-wizard',
+		element: <SetupWizardRoute />,
+	},
+	{
+		path: '/mailer/unsubscribe/:_id/:createdAt',
+		id: 'mailer-unsubscribe',
+		element: appLayout.wrap(<MailerUnsubscriptionPage />),
+	},
+	{
+		path: '/login-token/:token',
+		id: 'tokenLogin',
+		element: appLayout.wrap(<LoginTokenRoute />),
+	},
+	{
+		path: '/reset-password/:token',
+		id: 'resetPassword',
+		element: appLayout.wrap(<ResetPasswordPage />),
+	},
+	{
+		path: '/oauth/authorize',
+		id: 'oauth/authorize',
+		element: appLayout.wrap(<OAuthAuthorizationPage />),
+	},
+	{
+		path: '/oauth/error/:error',
+		id: 'oauth/error',
+		element: appLayout.wrap(<OAuthErrorPage />),
+	},
+	{
+		path: '/saml/:token',
+		id: 'saml',
+		element: appLayout.wrap(<SAMLLoginRoute />),
+	},
+	{
+		path: '/call-history/:tab?/:historyId?',
+		id: 'call-history',
+		element: appLayout.wrap(
+			<MainLayout>
+				<CallHistoryPage />
+				<SidebarRailCallPanel />
+			</MainLayout>,
+		),
+	},
+	{
+		path: '/search',
+		id: 'search',
+		element: appLayout.wrap(
+			<MainLayout>
+				<SearchPage />
+			</MainLayout>,
+		),
+	},
+	{
+		path: '*',
+		id: 'not-found',
+		element: <NotFoundPage />,
+	},
+]);

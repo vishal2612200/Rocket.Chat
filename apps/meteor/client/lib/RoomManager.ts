@@ -1,0 +1,197 @@
+import type { IRoom } from '@rocket.chat/core-typings';
+import { Emitter } from '@rocket.chat/emitter';
+import { useMemo, useSyncExternalStore } from 'react';
+import type { CacheSnapshot } from 'virtua';
+
+import { LegacyRoomManager } from './LegacyRoomManager';
+import { RoomHistoryManager } from './RoomHistoryManager';
+import { getConfig } from './utils/getConfig';
+
+const debug = !!(getConfig('debug') || getConfig('debug-RoomStore'));
+
+type CollapsibleKey = `collapsibleToggled-${string}`;
+
+export const getCollapsibleEventKey = (key: string): CollapsibleKey => `collapsibleToggled-${key}`;
+
+class RoomStore extends Emitter<{
+	changed: undefined;
+	[key: CollapsibleKey]: undefined;
+}> {
+	lastTime?: Date;
+
+	scroll?: number;
+
+	cache?: CacheSnapshot;
+
+	// Message count the cache snapshot was taken against, since virtua's cache is positional.
+	cacheMessageCount?: number;
+
+	lm?: Date;
+
+	atBottom = true;
+
+	private readonly toggledCollapsibles = new Set<string>();
+
+	constructor(readonly rid: string) {
+		super();
+
+		debug && this.on('changed', () => console.log(`RoomStore ${this.rid} changed`, this));
+	}
+
+	update({
+		scroll,
+		lastTime,
+		atBottom,
+		cache,
+		cacheMessageCount,
+	}: {
+		scroll?: number;
+		lastTime?: Date;
+		atBottom?: boolean;
+		cache?: CacheSnapshot;
+		cacheMessageCount?: number;
+	}): void {
+		if (scroll !== undefined) {
+			this.scroll = scroll;
+		}
+		if (lastTime !== undefined) {
+			this.lastTime = lastTime;
+		}
+
+		if (atBottom !== undefined) {
+			this.atBottom = atBottom;
+		}
+		if (cache !== undefined) {
+			this.cache = cache;
+			this.cacheMessageCount = cacheMessageCount;
+		}
+		if (scroll || lastTime) {
+			this.emit('changed');
+		}
+	}
+
+	toggleCollapsible(key: string): void {
+		if (this.toggledCollapsibles.has(key)) {
+			this.toggledCollapsibles.delete(key);
+			this.emit(getCollapsibleEventKey(key));
+			return;
+		}
+
+		this.toggledCollapsibles.add(key);
+		this.emit(getCollapsibleEventKey(key));
+	}
+
+	isCollapsibleToggled(key: string): boolean {
+		return this.toggledCollapsibles.has(key);
+	}
+}
+
+const debugRoomManager = !!(getConfig('debug') || getConfig('debug-RoomManager'));
+export const RoomManager = new (class RoomManager extends Emitter<{
+	changed: IRoom['_id'] | undefined;
+	opened: IRoom['_id'];
+	closed: IRoom['_id'];
+	back: IRoom['_id'];
+	removed: IRoom['_id'];
+}> {
+	private rid: IRoom['_id'] | undefined;
+
+	public lastRid: IRoom['_id'] | undefined;
+
+	private rooms: Map<IRoom['_id'], RoomStore> = new Map();
+
+	constructor() {
+		super();
+		debugRoomManager &&
+			this.on('opened', (rid) => {
+				console.log('room opened ->', rid);
+			});
+
+		debugRoomManager &&
+			this.on('back', (rid) => {
+				console.log('room moved to back ->', rid);
+			});
+
+		debugRoomManager &&
+			this.on('closed', (rid) => {
+				console.log('room close ->', rid);
+			});
+	}
+
+	get lastOpened(): IRoom['_id'] | undefined {
+		return this.lastRid;
+	}
+
+	get opened(): IRoom['_id'] | undefined {
+		return this.rid;
+	}
+
+	visitedRooms(): IRoom['_id'][] {
+		return [...this.rooms.keys()];
+	}
+
+	back(rid: IRoom['_id']): void {
+		if (rid === this.rid) {
+			this.lastRid = rid;
+			this.rid = undefined;
+			this.emit('back', rid);
+			this.emit('changed', this.rid);
+		}
+	}
+
+	getMore(rid: IRoom['_id']): void {
+		RoomHistoryManager.getMore(rid);
+	}
+
+	close(rid: IRoom['_id']): void {
+		if (this.rooms.has(rid)) {
+			this.rooms.delete(rid);
+			this.emit('closed', rid);
+		}
+		this.emit('changed', this.rid);
+	}
+
+	open(rid: IRoom['_id']): void {
+		if (rid === this.rid) {
+			return;
+		}
+		this.back(rid);
+		if (!this.rooms.has(rid)) {
+			this.rooms.set(rid, new RoomStore(rid));
+		}
+		this.rid = rid;
+		this.emit('opened', this.rid);
+		this.emit('changed', this.rid);
+	}
+
+	getStore(rid: IRoom['_id']): RoomStore | undefined {
+		return this.rooms.get(rid);
+	}
+})();
+
+const subscribeOpenedRoom = [
+	(callback: () => void): (() => void) => RoomManager.on('changed', callback),
+	(): IRoom['_id'] | undefined => RoomManager.opened,
+] as const;
+
+export const useOpenedRoom = (): IRoom['_id'] | undefined => useSyncExternalStore(...subscribeOpenedRoom);
+
+/** Whether `rid` is the opened room; a component re-renders only when that answer flips, not on every switch. */
+export const useIsOpenedRoom = (rid: IRoom['_id']): boolean =>
+	useSyncExternalStore(subscribeOpenedRoom[0], () => RoomManager.opened === rid);
+
+export const useOpenedRoomUnreadSince = (): Date | undefined => {
+	const rid = useOpenedRoom();
+
+	const { subscribe, getSnapshotValue } = useMemo(() => {
+		if (!rid) {
+			return {
+				subscribe: () => () => void 0,
+				getSnapshotValue: () => undefined,
+			};
+		}
+		return LegacyRoomManager.listenRoomPropsByRid(rid, 'unreadSince');
+	}, [rid]);
+
+	return useSyncExternalStore(subscribe, getSnapshotValue);
+};

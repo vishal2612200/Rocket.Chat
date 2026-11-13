@@ -1,0 +1,305 @@
+services:
+  rocketchat:
+    volumes:
+      - ${COVERAGE_DIR:-/tmp/coverage}:${COVERAGE_DIR:-/tmp/coverage}
+    build:
+      dockerfile: ${GITHUB_WORKSPACE:-}/apps/meteor/.docker/Dockerfile.alpine
+      context: /tmp/build
+      target: release-standard
+      x-bake:
+        platforms:
+          - linux/amd64
+          - linux/arm64
+    image: ghcr.io/${LOWERCASE_REPOSITORY}/rocket.chat:${DOCKER_TAG}${DOCKER_TAG_SUFFIX_ROCKETCHAT:-}
+    environment:
+      - 'TEST_MODE=${TEST_MODE:-true}'
+      - DEBUG=${DEBUG:-}
+      - EXIT_UNHANDLEDPROMISEREJECTION=true
+      - MONGO_URL=mongodb://mongo:27017/rocketchat?replicaSet=rs0
+      - 'MONGO_OPLOG_URL=${MONGO_OPLOG_URL:-}'
+      - 'TRANSPORTER=${TRANSPORTER:-}'
+      - MOLECULER_LOG_LEVEL=info
+      - 'ROCKETCHAT_LICENSE=${ENTERPRISE_LICENSE:-}'
+      - 'COVERAGE_DIR=${COVERAGE_DIR:-}'
+      - 'COVERAGE_REPORTER=${COVERAGE_REPORTER:-}'
+      - 'COVERAGE_FILE_NAME=${COVERAGE_FILE_NAME:-}'
+      - OVERWRITE_SETTING_Log_Level=${DEBUG_LOG_LEVEL:-0}
+      - Federation_Service_Enabled=true
+      - 'Federation_Service_Domain=rc.host'
+      - HEAP_USAGE_PERCENT=99
+      # keep server sockets alive longer than traefik's 90s idleConnTimeout so
+      # the proxy always closes pooled conns first and never reuses a dead one
+      - HTTP_SOCKET_TIMEOUT_MS=120000
+    depends_on:
+      traefik:
+        condition: service_started
+      mongo:
+        condition: service_healthy
+    labels:
+      traefik.enable: true
+      traefik.http.services.rocketchat.loadbalancer.server.port: 3000
+      traefik.http.routers.rocketchat.service: rocketchat
+      traefik.http.routers.rocketchat.rule: PathPrefix(`/`)
+      traefik.http.routers.rocketchat.middlewares: test-retry
+      traefik.http.middlewares.test-retry.retry.attempts: 4
+      # dedicated route for dynamic-import: buffering coalesces the tiny POST
+      # into a single upstream write, closing the go-transport early-response
+      # race window (response beating the request-write bookkeeping kills the
+      # conn mid body copy); scoped here because suite-wide buffering broke
+      # 404/CORS response semantics
+      traefik.http.routers.rocketchat-dynimport.rule: PathPrefix(`/__meteor__/dynamic-import`)
+      traefik.http.routers.rocketchat-dynimport.service: rocketchat
+      traefik.http.routers.rocketchat-dynimport.middlewares: test-buffer,test-retry
+      traefik.http.middlewares.test-buffer.buffering.retryExpression: IsNetworkError() && Attempts() < 4
+    healthcheck:
+      interval: 2s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+      test: wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/livez || exit 1
+
+  authorization-service:
+    build:
+      dockerfile: ${GITHUB_WORKSPACE:-}/ee/apps/Dockerfile
+      context: out/authorization-service
+      target: release-standard
+      x-bake:
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      args:
+        SERVICE: authorization-service
+    image: ghcr.io/${LOWERCASE_REPOSITORY}/authorization-service:${DOCKER_TAG}
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/rocketchat?replicaSet=rs0
+      - 'TRANSPORTER=${TRANSPORTER:-}'
+      - MOLECULER_LOG_LEVEL=info
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      - nats
+
+  account-service:
+    build:
+      dockerfile: ${GITHUB_WORKSPACE:-}/ee/apps/Dockerfile
+      context: out/account-service
+      target: release-standard
+      x-bake:
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      args:
+        SERVICE: account-service
+    image: ghcr.io/${LOWERCASE_REPOSITORY}/account-service:${DOCKER_TAG}
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/rocketchat?replicaSet=rs0
+      - 'TRANSPORTER=${TRANSPORTER:-}'
+      - MOLECULER_LOG_LEVEL=info
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      - nats
+
+  presence-service:
+    build:
+      dockerfile: ${GITHUB_WORKSPACE:-}/ee/apps/Dockerfile
+      context: out/presence-service
+      target: release-standard
+      x-bake:
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      args:
+        SERVICE: presence-service
+    image: ghcr.io/${LOWERCASE_REPOSITORY}/presence-service:${DOCKER_TAG}
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/rocketchat?replicaSet=rs0
+      - 'TRANSPORTER=${TRANSPORTER:-}'
+      - MOLECULER_LOG_LEVEL=info
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      - nats
+
+  ddp-streamer-service:
+    build:
+      dockerfile: ${GITHUB_WORKSPACE:-}/ee/apps/Dockerfile
+      context: out/ddp-streamer
+      target: release-standard
+      x-bake:
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      args:
+        SERVICE: ddp-streamer
+    image: ghcr.io/${LOWERCASE_REPOSITORY}/ddp-streamer-service:${DOCKER_TAG}
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/rocketchat?replicaSet=rs0
+      - 'TRANSPORTER=${TRANSPORTER:-}'
+      - MOLECULER_LOG_LEVEL=info
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      - nats
+      - traefik
+    labels:
+      traefik.enable: true
+      traefik.http.services.ddp-streamer-service.loadbalancer.server.port: 3000
+      traefik.http.routers.ddp-streamer-service.service: ddp-streamer-service
+      traefik.http.routers.ddp-streamer-service.rule: PathPrefix(`/websocket`) || PathPrefix(`/sockjs`)
+
+  queue-worker-service:
+    build:
+      dockerfile: ${GITHUB_WORKSPACE:-}/ee/apps/Dockerfile
+      context: out/queue-worker
+      target: release-standard
+      x-bake:
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      args:
+        SERVICE: queue-worker
+    image: ghcr.io/${LOWERCASE_REPOSITORY}/queue-worker-service:${DOCKER_TAG}
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/rocketchat?replicaSet=rs0
+      - 'TRANSPORTER=${TRANSPORTER:-}'
+      - MOLECULER_LOG_LEVEL=info
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      - nats
+
+  omnichannel-transcript-service:
+    build:
+      dockerfile: ${GITHUB_WORKSPACE:-}/ee/apps/Dockerfile
+      context: out/omnichannel-transcript
+      target: release-standard
+      x-bake:
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      args:
+        SERVICE: omnichannel-transcript
+    image: ghcr.io/${LOWERCASE_REPOSITORY}/omnichannel-transcript-service:${DOCKER_TAG}
+    environment:
+      - 'TEST_MODE=${TEST_MODE:-true}'
+      - MONGO_URL=mongodb://mongo:27017/rocketchat?replicaSet=rs0
+      - 'TRANSPORTER=${TRANSPORTER:-}'
+      - MOLECULER_LOG_LEVEL=info
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      - nats
+
+  xmpp-server-service:
+    build:
+      dockerfile: ${GITHUB_WORKSPACE:-}/ee/apps/Dockerfile
+      context: out/xmpp-server-service
+      target: release-standard
+      x-bake:
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      args:
+        SERVICE: xmpp-server-service
+    image: ghcr.io/${LOWERCASE_REPOSITORY}/xmpp-server-service:${DOCKER_TAG}
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/rocketchat?replicaSet=rs0
+      - 'TRANSPORTER=${TRANSPORTER:-}'
+      - MOLECULER_LOG_LEVEL=info
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      - nats
+
+  nats:
+    image: nats:2.6-alpine
+
+  mongo:
+    image: mongodb/mongodb-community-server:${MONGODB_VERSION:-8.0-ubi9}
+    container_name: mongo
+    restart: on-failure
+    ports:
+      - 27017:27017
+    environment:
+      MONGODB_REPLICA_SET_NAME: ${MONGODB_REPLICA_SET_NAME:-rs0}
+      MONGODB_PORT_NUMBER: ${MONGODB_PORT_NUMBER:-27017}
+      MONGODB_INITIAL_PRIMARY_HOST: ${MONGODB_INITIAL_PRIMARY_HOST:-mongo}
+    entrypoint: |
+      bash -c
+        "mongod --replSet \"$$MONGODB_REPLICA_SET_NAME\" --bind_ip_all &
+          mongo_pid=$$!;
+          sleep 2;
+          until mongosh --eval \"db.adminCommand('ping')\"; do
+            if ! kill -0 $$mongo_pid 2>/dev/null; then
+              echo '=====> MongoDB exited before becoming ready';
+              wait $$mongo_pid;
+              exit 1;
+            fi;
+            echo '=====> Waiting for Mongo...';
+            sleep 1;
+          done;
+          echo \"=====> Initiating ReplSet $$MONGODB_REPLICA_SET_NAME at $$MONGODB_INITIAL_PRIMARY_HOST:$$MONGODB_PORT_NUMBER...\";
+          mongosh --eval \"rs.initiate({_id: '$$MONGODB_REPLICA_SET_NAME', members: [{ _id: 0, host: '$$MONGODB_INITIAL_PRIMARY_HOST:$$MONGODB_PORT_NUMBER' }]})\";
+          echo '=====> Initiating ReplSet done...';
+        wait $$mongo_pid"
+    healthcheck:
+      # Ready only once the replica set has an elected primary — the app connects
+      # with ?replicaSet=rs0 and a too-early connect closes the topology.
+      test:
+        ['CMD', 'mongosh', '--quiet', '--eval', 'try { rs.status().myState === 1 ? quit(0) : quit(1) } catch (e) { quit(1) }']
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      start_period: 5s
+
+  httpbin:
+    image: kong/httpbin
+    networks:
+      default:
+        aliases:
+          - httpbin.dev
+
+  mock-server:
+    image: ghcr.io/rocketchat/mockserver@sha256:aa4de5e0dd07ad4ab8849fbb2c67eedfcc98b27f9ddd6b54809409e6f9e8f53f
+    profiles:
+      - api
+      - ui
+    ports:
+      - 4000:8080
+    networks:
+      default:
+        # single-label hostnames fail server-fetch SSRF domain validation and message-parser only links TLDs
+        # from its whitelist (.local/.test/.internal are not in it), so tests reach it through this alias
+        aliases:
+          - mock-server.dev
+    healthcheck:
+      test: ['CMD', '/mock-server', '-healthcheck']
+      interval: 2s
+      timeout: 5s
+      retries: 5
+
+  traefik:
+    image: traefik:v3.6.6
+    command:
+      - --providers.docker=true
+    ports:
+      - 3000:80
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  openldap:
+    image: bitnamilegacy/openldap:latest
+    volumes:
+      - ./development/ldap:/opt/bitnami/openldap/data/
+    environment:
+      - LDAP_ADMIN_USERNAME=admin
+      - LDAP_ADMIN_PASSWORD=adminpassword
+      - LDAP_ROOT=dc=space,dc=air
+      - LDAP_ADMIN_DN=cn=admin,dc=space,dc=air
+      - LDAP_CUSTOM_LDIF_DIR=/opt/bitnami/openldap/data
+      - LDAP_LOGLEVEL=-1
+      - BITNAMI_DEBUG=false
+    ports:
+      - 1389:1389
+      - 1636:1636

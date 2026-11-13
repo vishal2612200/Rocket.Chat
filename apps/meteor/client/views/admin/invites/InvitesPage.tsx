@@ -1,0 +1,132 @@
+import { States, StatesIcon, StatesTitle, StatesActions, StatesAction, type TableColumnWidth } from '@rocket.chat/fuselage';
+import { useMediaQuery } from '@rocket.chat/fuselage-hooks';
+import {
+	GenericModal,
+	GenericTable,
+	GenericTableBody,
+	GenericTableHeader,
+	GenericTableHeaderCell,
+	GenericTableLoadingTable,
+	Page,
+	PageHeader,
+	PageContent,
+	GenericNoResults,
+} from '@rocket.chat/ui-client';
+import { useSetModal, useToastMessageDispatch, useEndpoint } from '@rocket.chat/ui-contexts';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import InviteRow from './InviteRow';
+
+const InvitesPage = () => {
+	const { t } = useTranslation();
+	const dispatchToastMessage = useToastMessageDispatch();
+	const setModal = useSetModal();
+
+	const getInvites = useEndpoint('GET', '/v1/listInvites');
+
+	const { data, isLoading, refetch, isSuccess, isError } = useQuery({
+		queryKey: ['invites'],
+		queryFn: async () => {
+			const invites = await getInvites();
+			return invites;
+		},
+		meta: {
+			apiErrorToastMessage: true,
+		},
+	});
+
+	const onRemove = (removeInvite: () => Promise<boolean>): void => {
+		const confirmRemove = async (): Promise<void> => {
+			try {
+				await removeInvite();
+				dispatchToastMessage({ type: 'success', message: t('Invite_removed') });
+				refetch();
+			} catch (error) {
+				if (typeof error === 'string' || error instanceof Error) {
+					dispatchToastMessage({ type: 'error', message: error });
+				}
+			} finally {
+				setModal();
+			}
+		};
+
+		setModal(
+			<GenericModal
+				title={t('Are_you_sure')}
+				variant='danger'
+				confirmText={t('Yes')}
+				cancelText={t('No')}
+				onClose={(): void => setModal()}
+				onCancel={(): void => setModal()}
+				onConfirm={confirmRemove}
+			>
+				{t('Are_you_sure_you_want_to_delete_this_record')}
+			</GenericModal>,
+		);
+	};
+
+	const notSmall = useMediaQuery('(min-width: 768px)');
+
+	const columns: TableColumnWidth[] = [notSmall ? '20%' : '80%', ...(notSmall ? (['35%', '20%', '10%', '10%'] as const) : [])];
+
+	const headers = useMemo(
+		() => (
+			<>
+				<GenericTableHeaderCell>{t('Token')}</GenericTableHeaderCell>
+				{notSmall && (
+					<>
+						<GenericTableHeaderCell>{t('Created_at')}</GenericTableHeaderCell>
+						<GenericTableHeaderCell>{t('Expiration')}</GenericTableHeaderCell>
+						<GenericTableHeaderCell>{t('Uses')}</GenericTableHeaderCell>
+						<GenericTableHeaderCell>{t('Uses_left')}</GenericTableHeaderCell>
+						<GenericTableHeaderCell />
+					</>
+				)}
+			</>
+		),
+		[notSmall, t],
+	);
+
+	return (
+		<Page>
+			<PageHeader title={t('Invites')} />
+			<PageContent>
+				<>
+					{isLoading && (
+						<GenericTable columns={columns}>
+							<GenericTableHeader>{headers}</GenericTableHeader>
+							<GenericTableBody>
+								<GenericTableLoadingTable headerCells={4} />
+							</GenericTableBody>
+						</GenericTable>
+					)}
+					{isSuccess && data && data.length > 0 && (
+						<GenericTable columns={columns}>
+							<GenericTableHeader>{headers}</GenericTableHeader>
+							<GenericTableBody>
+								{isLoading && <GenericTableLoadingTable headerCells={notSmall ? 4 : 1} />}
+								{data.map((invite) => (
+									<InviteRow key={invite._id} {...invite} onRemove={onRemove} />
+								))}
+							</GenericTableBody>
+						</GenericTable>
+					)}
+					{isSuccess && data?.length === 0 && <GenericNoResults />}
+					{isError && (
+						<States>
+							<StatesIcon name='warning' variation='danger' />
+							<StatesTitle>{t('Something_went_wrong')}</StatesTitle>
+							<StatesActions>
+								<StatesAction onClick={() => refetch()}>{t('Reload_page')}</StatesAction>
+							</StatesActions>
+						</States>
+					)}
+				</>
+			</PageContent>
+		</Page>
+	);
+};
+
+export default InvitesPage;

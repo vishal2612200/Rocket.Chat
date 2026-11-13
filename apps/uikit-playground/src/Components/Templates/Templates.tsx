@@ -1,0 +1,53 @@
+import { css } from '@rocket.chat/css-in-js';
+import { Box, Button, Icon, Scrollable } from '@rocket.chat/fuselage';
+import { useContext } from 'react';
+
+import Container from './Container';
+import { context, templatesToggleAction } from '../../Context';
+import { templates } from '../../utils/templates';
+
+const Templates = () => {
+	const {
+		state: { templatesToggle },
+		dispatch,
+	} = useContext(context);
+	return (
+		<>
+			{templatesToggle && (
+				<Scrollable vertical>
+					<Box
+						position='absolute'
+						width='100%'
+						height='100%'
+						display='flex'
+						justifyContent='center'
+						alignItems='flex-start'
+						backgroundColor='white'
+						zIndex={100}
+						overflow='auto'
+						className={css`
+							top: 0;
+							left: 0;
+						`}
+					>
+						<Box
+							position='fixed'
+							display='flex'
+							className={css`
+								top: 80px;
+								right: 40px;
+							`}
+						>
+							<Button square onClick={() => dispatch(templatesToggleAction(false))}>
+								<Icon name='cross' size='x15' />
+							</Button>
+						</Box>
+						<Container templates={templates} />
+					</Box>
+				</Scrollable>
+			)}
+		</>
+	);
+};
+
+export default Templates;

@@ -1,0 +1,210 @@
+import type { IIntegrationHistory, Serialized } from '@rocket.chat/core-typings';
+import { Button, Icon, Box, AccordionItem, Field, FieldGroup, FieldLabel, FieldRow, Stack } from '@rocket.chat/fuselage';
+import { useStableCallback } from '@rocket.chat/fuselage-hooks';
+import { useFormatDateAndTime } from '@rocket.chat/ui-client';
+import { useEndpoint } from '@rocket.chat/ui-contexts';
+import DOMPurify from 'dompurify';
+import type { MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { outgoingEvents } from '../../../../../../lib/integrations/outgoingEvents';
+import { useHighlightedCode } from '../../../../../hooks/useHighlightedCode';
+
+export type HistoryItemProps = { data: Serialized<IIntegrationHistory> };
+
+const HistoryItem = ({ data }: HistoryItemProps) => {
+	const { t } = useTranslation();
+
+	const replayOutgoingIntegration = useEndpoint('POST', '/v1/integrations.replayOutgoing');
+
+	const {
+		_id,
+		_createdAt,
+		_updatedAt,
+		httpResult,
+		event,
+		step,
+		httpCallData,
+		data: dataSentToTrigger,
+		prepareSentMessage,
+		processSentMessage,
+		url,
+		httpError,
+		errorStack,
+		error,
+		integration: { _id: integrationId },
+	} = data;
+
+	const createdAt = typeof _createdAt === 'string' ? _createdAt : (_createdAt as Date).toISOString();
+	const updatedAt = typeof _updatedAt === 'string' ? _updatedAt : (_updatedAt as Date).toISOString();
+
+	const handleClickReplay = useStableCallback((e: MouseEvent) => {
+		e.stopPropagation();
+		replayOutgoingIntegration({ integrationId, historyId: _id });
+	});
+
+	const formatDateAndTime = useFormatDateAndTime();
+
+	const dataSentToTriggerCode = useHighlightedCode('json', JSON.stringify(dataSentToTrigger || '', null, 2));
+	const prepareSentMessageCode = useHighlightedCode('json', JSON.stringify(prepareSentMessage || '', null, 2));
+	const processSentMessageCode = useHighlightedCode('json', JSON.stringify(processSentMessage || '', null, 2));
+	const httpCallDataCode = useHighlightedCode('json', JSON.stringify(httpCallData || '', null, 2));
+	const httpErrorCode = useHighlightedCode('json', JSON.stringify(httpError || '', null, 2));
+	const httpResultCode = useHighlightedCode('json', JSON.stringify(httpResult || '', null, 2));
+	const errorStackCode = useHighlightedCode('json', JSON.stringify(errorStack || '', null, 2));
+
+	return (
+		<AccordionItem
+			title={
+				<Box display='inline-flex' width='full' flexDirection='row' justifyContent='space-between'>
+					<Stack direction='row' align='center' gap={4}>
+						<Icon name='info-circled' size='x16' />
+						{formatDateAndTime(_createdAt)}
+					</Stack>
+					<Button variant='secondary' onClick={handleClickReplay}>
+						{t('Replay')}
+					</Button>
+				</Box>
+			}
+		>
+			<FieldGroup>
+				<Field>
+					<FieldLabel>{t('Status')}</FieldLabel>
+					<FieldRow>
+						<Box withRichContent width='full'>
+							<code>{error ? t('Failure') : t('Success')}</code>
+						</Box>
+					</FieldRow>
+				</Field>
+				<Field>
+					<FieldLabel>{t('Integration_Outgoing_WebHook_History_Time_Triggered')}</FieldLabel>
+					<FieldRow>
+						<Box withRichContent width='full'>
+							<code>{createdAt}</code>
+						</Box>
+					</FieldRow>
+				</Field>
+				<Field>
+					<FieldLabel>{t('Integration_Outgoing_WebHook_History_Time_Ended_Or_Error')}</FieldLabel>
+					<FieldRow>
+						<Box withRichContent width='full'>
+							<code>{updatedAt}</code>
+						</Box>
+					</FieldRow>
+				</Field>
+				<Field>
+					<FieldLabel>{t('Event_Trigger')}</FieldLabel>
+					<FieldRow>
+						<Box withRichContent width='full'>
+							<code>{t(outgoingEvents[event].label)}</code>
+						</Box>
+					</FieldRow>
+				</Field>
+				<Field>
+					<FieldLabel>{t('Integration_Outgoing_WebHook_History_Trigger_Step')}</FieldLabel>
+					<FieldRow>
+						<Box withRichContent width='full'>
+							<code>{step}</code>
+						</Box>
+					</FieldRow>
+				</Field>
+				{dataSentToTrigger && (
+					<Field>
+						<FieldLabel>{t('Integration_Outgoing_WebHook_History_Data_Passed_To_Trigger')}</FieldLabel>
+						<FieldRow>
+							<Box withRichContent width='full'>
+								<pre>
+									<code dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(dataSentToTriggerCode) }}></code>
+								</pre>
+							</Box>
+						</FieldRow>
+					</Field>
+				)}
+				{prepareSentMessage && (
+					<Field>
+						<FieldLabel>{t('Integration_Outgoing_WebHook_History_Messages_Sent_From_Prepare_Script')}</FieldLabel>
+						<FieldRow>
+							<Box withRichContent width='full'>
+								<pre>
+									<code dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(prepareSentMessageCode) }}></code>
+								</pre>
+							</Box>
+						</FieldRow>
+					</Field>
+				)}
+				{processSentMessage && (
+					<Field>
+						<FieldLabel>{t('Integration_Outgoing_WebHook_History_Messages_Sent_From_Process_Script')}</FieldLabel>
+						<FieldRow>
+							<Box withRichContent width='full'>
+								<pre>
+									<code dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(processSentMessageCode) }}></code>
+								</pre>
+							</Box>
+						</FieldRow>
+					</Field>
+				)}
+				{url && (
+					<Field>
+						<FieldLabel>{t('URL')}</FieldLabel>
+						<FieldRow>
+							<Box withRichContent width='full'>
+								<code>{url}</code>
+							</Box>
+						</FieldRow>
+					</Field>
+				)}
+				{httpCallData && (
+					<Field>
+						<FieldLabel>{t('Integration_Outgoing_WebHook_History_Data_Passed_To_URL')}</FieldLabel>
+						<FieldRow>
+							<Box withRichContent width='full'>
+								<pre>
+									<code dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(httpCallDataCode) }}></code>
+								</pre>
+							</Box>
+						</FieldRow>
+					</Field>
+				)}
+				{httpError && (
+					<Field>
+						<FieldLabel>{t('Integration_Outgoing_WebHook_History_Http_Response_Error')}</FieldLabel>
+						<FieldRow>
+							<Box withRichContent width='full'>
+								<pre>
+									<code dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(httpErrorCode) }}></code>
+								</pre>
+							</Box>
+						</FieldRow>
+					</Field>
+				)}
+				{httpResult && (
+					<Field>
+						<FieldLabel>{t('Integration_Outgoing_WebHook_History_Http_Response')}</FieldLabel>
+						<FieldRow>
+							<Box withRichContent width='full'>
+								<pre>
+									<code dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(httpResultCode) }}></code>
+								</pre>
+							</Box>
+						</FieldRow>
+					</Field>
+				)}
+				{errorStack && (
+					<Field>
+						<FieldLabel>{t('Integration_Outgoing_WebHook_History_Error_Stacktrace')}</FieldLabel>
+						<FieldRow>
+							<Box withRichContent width='full'>
+								<pre>
+									<code dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(errorStackCode) }}></code>
+								</pre>
+							</Box>
+						</FieldRow>
+					</Field>
+				)}
+			</FieldGroup>
+		</AccordionItem>
+	);
+};
+
+export default HistoryItem;

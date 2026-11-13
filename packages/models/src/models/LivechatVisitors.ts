@@ -1,0 +1,527 @@
+import type { DeepWritable, IVisitorExternalIdentifier, ILivechatVisitor, RocketChatRecordDeleted } from '@rocket.chat/core-typings';
+import type { FindPaginated, ILivechatVisitorsModel, DocumentWithProjection, FindOptionsWithProjection } from '@rocket.chat/model-typings';
+import { escapeRegExp } from '@rocket.chat/tools';
+import type {
+	AggregationCursor,
+	Collection,
+	FindCursor,
+	Db,
+	Document,
+	Filter,
+	FindOptions,
+	UpdateResult,
+	IndexDescription,
+	DeleteResult,
+	UpdateFilter,
+	WithId,
+	FindOneAndUpdateOptions,
+} from 'mongodb';
+import { ObjectId } from 'mongodb';
+
+import { Settings } from '../index';
+import { BaseRaw } from './BaseRaw';
+
+export class LivechatVisitorsRaw extends BaseRaw<ILivechatVisitor> implements ILivechatVisitorsModel {
+	constructor(db: Db, trash?: Collection<RocketChatRecordDeleted<ILivechatVisitor>>) {
+		super(db, 'livechat_visitor', trash);
+	}
+
+	protected override modelIndexes(): IndexDescription[] {
+		return [
+			{ key: { token: 1 } },
+			{ key: { 'phone.phoneNumber': 1 }, sparse: true },
+			{ key: { 'visitorEmails.address': 1 }, sparse: true },
+			{ key: { 'externalIds.entityId': 1 }, sparse: true },
+			{ key: { name: 1 }, sparse: true },
+			{ key: { username: 1 } },
+			{ key: { 'contactMananger.username': 1 }, sparse: true },
+			{ key: { 'livechatData.$**': 1 } },
+			{ key: { disabled: 1 }, partialFilterExpression: { disabled: { $exists: true } } },
+		];
+	}
+
+	findOneVisitorByPhone(phone: string): Promise<ILivechatVisitor | null> {
+		const query = {
+			'phone.phoneNumber': phone,
+		};
+
+		return this.findOne(query);
+	}
+
+	async findOneVisitorByPhoneOrEmailAndAddExternalId(
+		contactData: { phone: string } | { email: string },
+		appId: string,
+		externalId: Omit<IVisitorExternalIdentifier, 'appId'>,
+	): Promise<ILivechatVisitor | null> {
+		const query =
+			'phone' in contactData ? { 'phone.phoneNumber': contactData.phone } : { 'visitorEmails.address': contactData.email.toLowerCase() };
+
+		const visitor = await this.findOne(query);
+		if (!visitor) {
+			return null;
+		}
+
+		const filteredIds = visitor.externalIds?.filter((e) => e.appId !== appId) ?? [];
+		const newExternalIds = [...filteredIds, { appId, ...externalId }];
+
+		await this.updateOne({ _id: visitor._id }, { $set: { externalIds: newExternalIds } });
+
+		return { ...visitor, externalIds: newExternalIds };
+	}
+
+	findOneByExternalId(entityId: string): Promise<ILivechatVisitor | null> {
+		return this.findOne({
+			'externalIds.entityId': entityId,
+		});
+	}
+
+	async updateExternalIdById(
+		_id: string,
+		appId: string,
+		externalId: Omit<IVisitorExternalIdentifier, 'appId'>,
+	): Promise<ILivechatVisitor | null> {
+		const visitor = await this.findOne({ _id });
+		if (!visitor) {
+			return null;
+		}
+
+		const filteredIds = visitor.externalIds?.filter((e) => e.appId !== appId) ?? [];
+		const newExternalIds = [...filteredIds, { appId, ...externalId }];
+
+		await this.updateOne({ _id }, { $set: { externalIds: newExternalIds } });
+
+		return { ...visitor, externalIds: newExternalIds };
+	}
+
+	async findOneGuestByEmailAddress(emailAddress: string): Promise<ILivechatVisitor | null> {
+		if (!emailAddress) {
+			return null;
+		}
+
+		const query = {
+			'visitorEmails.address': String(emailAddress).toLowerCase(),
+		};
+
+		return this.findOne(query);
+	}
+
+	/**
+	 * Find visitors by _id
+	 * @param {string} token - Visitor token
+	 */
+	findById<T extends Document = ILivechatVisitor, O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>>(
+		_id: string,
+		options?: O,
+	): FindCursor<DocumentWithProjection<T, O>> {
+		const query = {
+			_id,
+		};
+
+		return this.find<T, O>(query, options);
+	}
+
+	findEnabled<T extends Document = ILivechatVisitor, O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>>(
+		query: Filter<ILivechatVisitor>,
+		options?: O,
+	): FindCursor<DocumentWithProjection<T, O>> {
+		return this.find<T, O>(
+			{
+				...query,
+				disabled: { $ne: true },
+			},
+			options,
+		);
+	}
+
+	findOneEnabledById<T extends Document = ILivechatVisitor, O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>>(
+		_id: string,
+		options?: O,
+	): Promise<DocumentWithProjection<T, O> | null> {
+		const query = {
+			_id,
+			disabled: { $ne: true },
+		};
+
+		return this.findOne<T, O>(query, options);
+	}
+
+	getVisitorByToken<T extends Document = ILivechatVisitor, O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>>(
+		token: string,
+		options?: O,
+	): Promise<DocumentWithProjection<T, O> | null> {
+		const query = {
+			token,
+		};
+
+		return this.findOne<T, O>(query, options);
+	}
+
+	countVisitorsBetweenDate({ start, end, department }: { start: Date; end: Date; department?: string }): Promise<number> {
+		const query = {
+			disabled: { $ne: true },
+			_updatedAt: {
+				$gte: new Date(start),
+				$lt: new Date(end),
+			},
+			...(department && department !== 'undefined' && { department }),
+		};
+
+		return this.countDocuments(query);
+	}
+
+	async getNextVisitorUsername(): Promise<string> {
+		// TODO remove dependency from another model - this logic should be inside a service/function
+		const livechatCount = await Settings.incrementValueById('Livechat_guest_count', 1, { returnDocument: 'after' });
+
+		if (typeof livechatCount?.value !== 'number') {
+			throw new Error("Can't find Livechat_guest_count setting");
+		}
+
+		return `guest-${livechatCount.value}`;
+	}
+
+	findByNameRegexWithExceptionsAndConditions<P extends Document = ILivechatVisitor>(
+		searchTerm: string,
+		exceptions: string[] = [],
+		conditions: Filter<ILivechatVisitor> = {},
+		options: FindOptions<P extends ILivechatVisitor ? ILivechatVisitor : P> = {},
+	): AggregationCursor<
+		P & {
+			custom_name: string;
+		}
+	> {
+		if (!Array.isArray(exceptions)) {
+			exceptions = [exceptions];
+		}
+
+		const nameRegex = new RegExp(`^${escapeRegExp(searchTerm).trim()}`, 'i');
+
+		const match = {
+			$match: {
+				name: nameRegex,
+				_id: {
+					$nin: exceptions,
+				},
+				...conditions,
+			},
+		};
+
+		const { projection, sort, skip, limit } = options;
+		const project = {
+			$project: {
+				// TODO: move this logic to client
+				custom_name: { $concat: ['$username', ' - ', '$name'] },
+				...projection,
+			},
+		};
+
+		const order = { $sort: sort || { name: 1 } };
+		const params: Record<string, unknown>[] = [match, order, skip && { $skip: skip }, limit && { $limit: limit }, project].filter(
+			Boolean,
+		) as Record<string, unknown>[];
+
+		return this.col.aggregate(params);
+	}
+
+	/**
+	 * Find visitors by their email or phone or username or name
+	 */
+	async findPaginatedVisitorsByEmailOrPhoneOrNameOrUsernameOrCustomField<
+		T extends Document = ILivechatVisitor,
+		O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>,
+	>(
+		emailOrPhone?: string,
+		nameOrUsername?: RegExp,
+		allowedCustomFields: string[] = [],
+		options?: O,
+	): Promise<FindPaginated<FindCursor<DocumentWithProjection<T, O>>>> {
+		if (!emailOrPhone && !nameOrUsername && allowedCustomFields.length === 0) {
+			return this.findPaginated<T, O>({ disabled: { $ne: true } }, options);
+		}
+
+		const query: Filter<ILivechatVisitor> = {
+			$or: [
+				...(emailOrPhone
+					? [
+							{
+								'visitorEmails.address': emailOrPhone,
+							},
+							{
+								'phone.phoneNumber': emailOrPhone,
+							},
+						]
+					: []),
+				...(nameOrUsername
+					? [
+							{
+								name: nameOrUsername,
+							},
+							{
+								username: nameOrUsername,
+							},
+						]
+					: []),
+				...allowedCustomFields.map((c: string) => ({ [`livechatData.${c}`]: nameOrUsername })),
+			],
+			disabled: { $ne: true },
+		};
+
+		return this.findPaginated<T, O>(query, options);
+	}
+
+	async findOneByEmailAndPhoneAndCustomField<
+		T extends Document = ILivechatVisitor,
+		O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>,
+	>(
+		email: string | null | undefined,
+		phone: string | null | undefined,
+		customFields?: { [key: string]: RegExp },
+		options?: O,
+	): Promise<DocumentWithProjection<T, O> | null> {
+		const query = Object.assign(
+			{
+				disabled: { $ne: true },
+			},
+			{
+				...(email && { visitorEmails: { address: email } }),
+				...(phone && { phone: { phoneNumber: phone } }),
+				...customFields,
+			},
+		);
+
+		if (Object.keys(query).length === 1) {
+			return null;
+		}
+
+		return this.findOne<T, O>(query, options);
+	}
+
+	updateAllLivechatDataByToken(token: string, livechatDataToUpdate: Record<string, string>): Promise<UpdateResult> {
+		return this.updateOne({ token }, { $set: livechatDataToUpdate });
+	}
+
+	async updateLivechatDataByToken(
+		token: string,
+		key: string,
+		value: unknown,
+		overwrite = true,
+	): Promise<UpdateResult | Document | boolean> {
+		const query = {
+			token,
+		};
+
+		if (!overwrite) {
+			const user = await this.getVisitorByToken(token, { projection: { livechatData: 1 } });
+			if (user?.livechatData && typeof user.livechatData[key] !== 'undefined') {
+				return true;
+			}
+		}
+
+		const update: UpdateFilter<ILivechatVisitor> = {
+			$set: {
+				[`livechatData.${key}`]: value,
+			},
+		};
+
+		return this.updateOne(query, update);
+	}
+
+	updateLastAgentByToken(token: string, lastAgent: ILivechatVisitor['lastAgent']): Promise<Document | UpdateResult> {
+		const query = {
+			token,
+		};
+
+		const update = {
+			$set: {
+				lastAgent,
+			},
+		};
+
+		return this.updateOne(query, update);
+	}
+
+	updateById(_id: string, update: UpdateFilter<ILivechatVisitor>): Promise<Document | UpdateResult> {
+		return this.updateOne({ _id }, update);
+	}
+
+	async updateOneByIdOrToken(
+		update: Partial<ILivechatVisitor>,
+		options?: FindOneAndUpdateOptions,
+	): Promise<null | WithId<ILivechatVisitor>> {
+		let query: Filter<ILivechatVisitor> = {};
+
+		if (update._id) {
+			query = { _id: update._id };
+		} else if (update.token) {
+			query = { token: update.token };
+			update._id = new ObjectId().toHexString();
+		}
+
+		return this.findOneAndUpdate(query, { $set: update }, options);
+	}
+
+	saveGuestById(
+		_id: string,
+		data: { name?: string; username?: string; email?: string; phone?: string; livechatData: { [k: string]: string | undefined } },
+	): Promise<UpdateResult | Document | boolean> {
+		const setData: DeepWritable<UpdateFilter<ILivechatVisitor>['$set']> = {};
+		const unsetData: DeepWritable<UpdateFilter<ILivechatVisitor>['$unset']> = {};
+
+		if (data.name) {
+			if (data.name?.trim()) {
+				setData.name = data.name.trim();
+			} else {
+				unsetData.name = 1;
+			}
+		}
+
+		if (data.email) {
+			if (data.email?.trim()) {
+				setData.visitorEmails = [{ address: data.email.trim() }];
+			} else {
+				unsetData.visitorEmails = 1;
+			}
+		}
+
+		if (data.phone) {
+			if (data.phone?.trim()) {
+				setData.phone = [{ phoneNumber: data.phone.trim() }];
+			} else {
+				unsetData.phone = 1;
+			}
+		}
+
+		if (data.livechatData) {
+			Object.keys(data.livechatData).forEach((key) => {
+				const value = data.livechatData[key]?.trim();
+				if (value) {
+					setData[`livechatData.${key}`] = value;
+				} else {
+					unsetData[`livechatData.${key}`] = 1;
+				}
+			});
+		}
+
+		const update: UpdateFilter<ILivechatVisitor> = {
+			...(Object.keys(setData).length && { $set: setData as UpdateFilter<ILivechatVisitor>['$set'] }),
+			...(Object.keys(unsetData).length && { $unset: unsetData as UpdateFilter<ILivechatVisitor>['$unset'] }),
+		};
+
+		if (!Object.keys(update).length) {
+			return Promise.resolve(true);
+		}
+
+		return this.updateOne({ _id }, update);
+	}
+
+	removeDepartmentById(_id: string): Promise<UpdateResult> {
+		return this.updateOne({ _id }, { $unset: { department: 1 } });
+	}
+
+	override removeById(_id: string): Promise<DeleteResult> {
+		return this.deleteOne({ _id });
+	}
+
+	async saveGuestEmailPhoneById(_id: string, emails: string[], phones: string[]): Promise<UpdateResult | Document | void> {
+		const saveEmail = ([] as string[])
+			.concat(emails)
+			.filter((email) => email?.trim())
+			.map((email) => ({ address: email }));
+
+		const savePhone = ([] as string[])
+			.concat(phones)
+			.filter((phone) => phone?.trim().replace(/[^\d]/g, ''))
+			.map((phone) => ({ phoneNumber: phone }));
+
+		if (!saveEmail.length && !savePhone.length) {
+			return Promise.resolve();
+		}
+
+		// TODO: Lead Capture features: Either create a migration script fixing records or deprecate it
+		// Temporary workaround for legacy data.
+		// Some old records have 'visitorEmails' or 'phone' set to 'null', which breaks the $addToSet below.
+		// Pending Product decision: either run a proper DB migration to fix all nulls,
+		// or deprecate this feature entirely. Remove this once a decision is made.
+		if (saveEmail.length) {
+			await this.updateOne({ _id, visitorEmails: null as any }, { $set: { visitorEmails: [] } });
+		}
+		if (savePhone.length) {
+			await this.updateOne({ _id, phone: null }, { $set: { phone: [] } });
+		}
+
+		return this.updateOne(
+			{ _id },
+			{
+				$addToSet: {
+					...(saveEmail.length && { visitorEmails: { $each: saveEmail } }),
+					...(savePhone.length && { phone: { $each: savePhone } }),
+				},
+			},
+		);
+	}
+
+	removeContactManagerByUsername(manager: string): Promise<Document | UpdateResult> {
+		return this.updateMany(
+			{
+				contactManager: {
+					username: manager,
+				},
+			},
+			{
+				$unset: {
+					contactManager: true,
+				},
+			},
+		);
+	}
+
+	disableById(_id: string): Promise<UpdateResult> {
+		return this.updateOne(
+			{ _id },
+			{
+				$set: { disabled: true },
+				$unset: {
+					department: 1,
+					contactManager: 1,
+					token: 1,
+					visitorEmails: 1,
+					phone: 1,
+					name: 1,
+					livechatData: 1,
+					lastChat: 1,
+					ip: 1,
+					host: 1,
+					userAgent: 1,
+					username: 1,
+					ts: 1,
+					status: 1,
+				},
+			},
+		);
+	}
+
+	setLastChatById(_id: string, lastChat: Required<ILivechatVisitor['lastChat']>): Promise<UpdateResult> {
+		return this.updateOne(
+			{ _id },
+			{
+				$set: {
+					lastChat,
+				},
+			},
+		);
+	}
+
+	updateDepartmentById(_id: string, department: string) {
+		return this.findOneAndUpdate({ _id }, { $set: { department } }, { returnDocument: 'after' });
+	}
+
+	findByIds<T extends Document = ILivechatVisitor, O extends FindOptionsWithProjection<T> = FindOptionsWithProjection<T>>(
+		ids: string[],
+		options?: O,
+	): FindCursor<DocumentWithProjection<T, O>> {
+		const query = {
+			_id: { $in: ids },
+		};
+		return this.find<T, O>(query, options);
+	}
+}

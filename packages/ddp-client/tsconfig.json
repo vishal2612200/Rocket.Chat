@@ -1,0 +1,12 @@
+{
+	"extends": "@rocket.chat/tsconfig/client.json",
+	"compilerOptions": {
+		"target": "es6",
+		"module": "commonjs",
+		"esModuleInterop": true,
+		"sourceMap": true,
+	},
+	"include": ["./src/**/*", "__examples__/**/*", "__mocks__/**/*", "__tests__/**/*"],
+	// The shared client config excludes specs; these are typechecked too.
+	"exclude": ["node_modules"],
+}

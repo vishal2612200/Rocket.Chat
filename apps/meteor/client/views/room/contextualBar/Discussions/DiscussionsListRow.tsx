@@ -1,0 +1,41 @@
+import type { IDiscussionMessage } from '@rocket.chat/core-typings';
+import { useTimeAgo } from '@rocket.chat/ui-client';
+import type { MouseEvent } from 'react';
+import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import DiscussionsListItem from './components/DiscussionsListItem';
+import { normalizeThreadMessage } from '../../../../lib/normalizeThreadMessage';
+
+export type DiscussionListRowProps = {
+	discussion: IDiscussionMessage;
+	showRealNames: boolean;
+	onClick: (e: MouseEvent<HTMLElement>) => void;
+};
+
+function DiscussionListRow({ discussion, showRealNames, onClick }: DiscussionListRowProps) {
+	const { t } = useTranslation();
+	const formatDate = useTimeAgo();
+
+	const msg = normalizeThreadMessage(discussion, t);
+
+	const { name = discussion.u.username } = discussion.u;
+
+	return (
+		<DiscussionsListItem
+			_id={discussion._id}
+			emoji={discussion.emoji}
+			dcount={discussion.dcount}
+			dlm={discussion.dlm}
+			name={showRealNames ? name : discussion.u.username}
+			username={discussion.u.username}
+			data-drid={discussion.drid}
+			ts={discussion.ts}
+			msg={msg}
+			formatDate={formatDate}
+			onClick={onClick}
+		/>
+	);
+}
+
+export default memo(DiscussionListRow);

@@ -1,0 +1,19 @@
+# Meteor packages used by this project, one per line.
+#
+# 'meteor add' and 'meteor remove' will edit this file for you,
+# but you can also edit it by hand.
+
+# Server-only runtime (DDP, accounts, mongo, webapp, ...); see packages/rocketchat-server-runtime.
+rocketchat:server-runtime
+
+rocketchat:livechat
+rocketchat:version
+
+meteor@2.3.1
+
+ecmascript@0.19.1
+typescript@5.11.1
+
+# photoswipe
+
+standard-minifier-js@3.2.0

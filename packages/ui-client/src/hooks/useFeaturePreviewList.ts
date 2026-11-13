@@ -1,0 +1,96 @@
+import type { TranslationKey } from '@rocket.chat/ui-contexts';
+
+export type FeaturesAvailable = 'secondarySidebar' | 'aiSearch' | 'roomToolboxLayout' | 'realtimeMessageComposer' | 'sidebarRail';
+
+export type FeaturePreviewProps = {
+	name: FeaturesAvailable;
+	i18n: TranslationKey;
+	description: TranslationKey;
+	group: 'AI' | 'Message' | 'Navigation' | 'Room';
+	imageUrl?: string;
+	value: boolean;
+	enabled: boolean;
+	disabled?: boolean;
+	enableQuery?: {
+		name: FeaturesAvailable;
+		value: boolean;
+	};
+};
+
+// TODO: Move the features preview array to another directory to be accessed from both BE and FE.
+export const defaultFeaturesPreview: FeaturePreviewProps[] = [
+	{
+		name: 'secondarySidebar',
+		i18n: 'Filters_and_secondary_sidebar',
+		description: 'Filters_and_secondary_sidebar_description',
+		group: 'Navigation',
+		imageUrl: 'images/featurePreview/secondary-sidebar.png',
+		value: false,
+		enabled: true,
+	},
+	{
+		name: 'aiSearch',
+		i18n: 'Intelligent_Search',
+		description: 'Intelligent_Search_description',
+		group: 'AI',
+		value: false,
+		enabled: true,
+	},
+	{
+		name: 'roomToolboxLayout',
+		i18n: 'Room_toolbox_layout',
+		description: 'Room_Toolbox_Layout_description',
+		group: 'Room',
+		value: false,
+		enabled: true,
+	},
+	{
+		name: 'realtimeMessageComposer',
+		i18n: 'Realtime_message_composer',
+		description: 'Realtime_message_composer_description',
+		group: 'Room',
+		value: false,
+		enabled: true,
+	},
+	{
+		name: 'sidebarRail',
+		i18n: 'Sidebar_rail',
+		description: 'Sidebar_rail_description',
+		group: 'Navigation',
+		value: false,
+		enabled: true,
+	},
+];
+
+export const enabledDefaultFeatures = defaultFeaturesPreview.filter((feature) => feature.enabled);
+
+// TODO: Remove this logic after we have a way to store object settings.
+export const parseSetting = (setting?: FeaturePreviewProps[] | string) => {
+	if (typeof setting === 'string') {
+		try {
+			return JSON.parse(setting) as FeaturePreviewProps[];
+		} catch (_) {
+			return;
+		}
+	}
+	return setting;
+};
+
+export const useFeaturePreviewList = (featuresList: FeaturePreviewProps[]) => {
+	const unseenFeatures = enabledDefaultFeatures.filter(
+		(defaultFeature) => !featuresList?.find((feature) => feature.name === defaultFeature.name),
+	).length;
+
+	const mergedFeatures = enabledDefaultFeatures.map((defaultFeature) => {
+		const feature = featuresList?.find((feature) => feature.name === defaultFeature.name);
+		// overwrite enableQuery and disabled with default value to avoid a migration to remove this from the DB
+		// payload on save now only have `name` and `value`
+		if (feature) {
+			feature.enableQuery = defaultFeature.enableQuery;
+			feature.disabled = defaultFeature.disabled;
+		}
+		return { ...defaultFeature, ...feature };
+	});
+
+	return { unseenFeatures, features: mergedFeatures };
+};

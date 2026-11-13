@@ -1,0 +1,48 @@
+import { Button, Stack, Text } from '@rocket.chat/fuselage';
+import { useMediaQuery } from '@rocket.chat/fuselage-hooks';
+import { GenericTableCell, GenericTableRow, useFormatDateAndTime } from '@rocket.chat/ui-client';
+import { useTranslation } from 'react-i18next';
+
+import DeviceIcon from '../../../../components/deviceManagement/DeviceIcon';
+import { useDeviceLogout } from '../../../../hooks/useDeviceLogout';
+
+type DevicesRowProps = {
+	_id: string;
+	deviceName?: string;
+	deviceType?: string;
+	deviceOSName?: string;
+	loginAt: string;
+	current?: boolean;
+};
+
+const DeviceManagementAccountRow = ({ _id, deviceName, deviceType = 'browser', deviceOSName, loginAt, current }: DevicesRowProps) => {
+	const { t } = useTranslation();
+	const formatDateAndTime = useFormatDateAndTime();
+	const mediaQuery = useMediaQuery('(min-width: 1024px)');
+
+	const handleDeviceLogout = useDeviceLogout(_id, '/v1/sessions/logout.me', current);
+
+	return (
+		<GenericTableRow key={_id} aria-label={_id}>
+			<GenericTableCell>
+				<Stack direction='row' align='center'>
+					<DeviceIcon deviceType={deviceType} />
+					{deviceName && (
+						<Text truncate>
+							{deviceName}
+							{current && ` (${t('current')})`}
+						</Text>
+					)}
+				</Stack>
+			</GenericTableCell>
+			<GenericTableCell>{deviceOSName || ''}</GenericTableCell>
+			<GenericTableCell>{formatDateAndTime(loginAt)}</GenericTableCell>
+			{mediaQuery && <GenericTableCell>{_id}</GenericTableCell>}
+			<GenericTableCell align='end'>
+				<Button onClick={() => handleDeviceLogout()}>{t('Logout')}</Button>
+			</GenericTableCell>
+		</GenericTableRow>
+	);
+};
+
+export default DeviceManagementAccountRow;

@@ -1,0 +1,59 @@
+import { Icon, Item, ItemActions, ItemContent, ItemDescription, ItemIcon, ItemMedia, ItemTitle, Text } from '@rocket.chat/fuselage';
+import { ITEM_MEDIA_SIZE, UserAvatar } from '@rocket.chat/ui-avatar';
+import { GenericMenu } from '@rocket.chat/ui-client';
+import { useUserPresence } from '@rocket.chat/ui-contexts';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { getUserDisplayNames } from '../../../../../lib/getUserDisplayNames';
+import { normalizeUsername } from '../../../../../lib/utils/normalizeUsername';
+import { ReactiveUserStatus } from '../../../../components/UserStatus';
+import { STATUS_LABEL_KEYS } from '../../../../components/UserStatusText';
+import type { BannedUser } from '../../../hooks/useRoomBannedUsers';
+
+export type BannedUsersItemProps = {
+	user: BannedUser;
+	useRealName: boolean;
+	onClickUnban: (username: string) => void;
+};
+
+const BannedUsersItem = ({ user, useRealName, onClickUnban }: BannedUsersItemProps) => {
+	const { t } = useTranslation();
+
+	const [nameOrUsername, displayUsername] = getUserDisplayNames(user.name, user.username, useRealName);
+	const federated = user.username.startsWith('@') && user.username.includes(':');
+	const status = useUserPresence(user._id)?.status;
+	const iconLabel = federated ? t('Federated') : status && t(STATUS_LABEL_KEYS[status]);
+
+	const options = useMemo(
+		() => [
+			{
+				id: 'unban-user',
+				content: <Text color='status-font-on-danger'>{t('Unban_user_from_room')}</Text>,
+				icon: 'ban' as const,
+				iconColor: 'status-font-on-danger' as const,
+				onClick: () => onClickUnban(user.username),
+			},
+		],
+		[onClickUnban, t, user.username],
+	);
+
+	return (
+		<Item role='listitem' inset='lg'>
+			<ItemMedia>
+				<UserAvatar username={normalizeUsername(user.username)} size={ITEM_MEDIA_SIZE.medium} />
+			</ItemMedia>
+			<ItemIcon label={iconLabel}>{federated ? <Icon name='globe' size='x16' /> : <ReactiveUserStatus uid={user._id} />}</ItemIcon>
+			<ItemContent>
+				<ItemTitle>
+					{nameOrUsername} {displayUsername && <ItemDescription inline>@{displayUsername}</ItemDescription>}
+				</ItemTitle>
+			</ItemContent>
+			<ItemActions reveal='hover'>
+				<GenericMenu detached title={t('More')} items={options} placement='bottom-end' />
+			</ItemActions>
+		</Item>
+	);
+};
+
+export default BannedUsersItem;

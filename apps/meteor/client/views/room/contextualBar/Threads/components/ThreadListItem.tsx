@@ -1,0 +1,67 @@
+import type { IThreadMainMessage } from '@rocket.chat/core-typings';
+import { useSetting, useUserId } from '@rocket.chat/ui-contexts';
+import type { MouseEvent } from 'react';
+import { useCallback, memo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import ThreadListMessage from './ThreadListMessage';
+import { clickableItem } from '../../../../../lib/clickableItem';
+import { normalizeThreadMessage } from '../../../../../lib/normalizeThreadMessage';
+import { useDecryptedMessage } from '../hooks/useDecryptedMessage';
+
+const ClickableThreadListMessage = clickableItem(ThreadListMessage);
+
+export type ThreadListItemProps = {
+	thread: IThreadMainMessage;
+	unread: string[];
+	unreadUser: string[];
+	unreadGroup: string[];
+	hasDraft?: boolean;
+	onClick: (tmid: IThreadMainMessage['_id']) => void;
+};
+
+const ThreadListItem = ({ thread, unread, unreadUser, unreadGroup, hasDraft, onClick }: ThreadListItemProps) => {
+	const { t } = useTranslation();
+	const uid = useUserId();
+	const decryptedMsg = useDecryptedMessage(thread);
+	const msg = normalizeThreadMessage({ ...thread, msg: decryptedMsg }, t);
+
+	const { name = thread.u.username } = thread.u;
+
+	const following = !!uid && (thread.replies?.includes(uid) ?? false);
+
+	const showRealNames = (useSetting('UI_Use_Real_Name') as boolean | undefined) ?? false;
+
+	const handleListItemClick = useCallback(
+		(event: MouseEvent<HTMLElement>): void => {
+			event.preventDefault();
+			event.stopPropagation();
+			onClick(thread._id);
+		},
+		[onClick, thread._id],
+	);
+
+	return (
+		<ClickableThreadListMessage
+			_id={thread._id}
+			replies={thread.tcount ?? 0}
+			tlm={thread.tlm}
+			ts={thread.ts}
+			participants={thread.replies}
+			name={showRealNames ? name : thread.u.username}
+			username={thread.u.username}
+			unread={unread.includes(thread._id)}
+			mention={unreadUser.includes(thread._id)}
+			all={unreadGroup.includes(thread._id)}
+			following={following}
+			hasDraft={hasDraft}
+			data-id={thread._id}
+			msg={msg ?? ''}
+			rid={thread.rid}
+			onClick={handleListItemClick}
+			emoji={thread?.emoji}
+		/>
+	);
+};
+
+export default memo(ThreadListItem);

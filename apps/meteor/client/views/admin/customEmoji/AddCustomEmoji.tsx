@@ -1,0 +1,129 @@
+import { Box, Button, ButtonGroup, Margins, TextInput, Field, FieldLabel, FieldRow, FieldError, IconButton } from '@rocket.chat/fuselage';
+import { ContextualbarScrollableContent, ContextualbarFooter } from '@rocket.chat/ui-client';
+import { useToastMessageDispatch } from '@rocket.chat/ui-contexts';
+import { useQueryClient } from '@tanstack/react-query';
+import type { ChangeEvent } from 'react';
+import { useCallback, useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useEndpointUploadMutation } from '../../../hooks/useEndpointUploadMutation';
+import { useSingleFileInput } from '../../../hooks/useSingleFileInput';
+
+export type AddCustomEmojiProps = {
+	close: () => void;
+	onChange: () => void;
+};
+
+const AddCustomEmoji = ({ close, onChange, ...props }: AddCustomEmojiProps) => {
+	const { t } = useTranslation();
+	const emojiLabelId = useId();
+	const [name, setName] = useState('');
+	const [aliases, setAliases] = useState('');
+	const [emojiFile, setEmojiFile] = useState<Blob>();
+	const [newEmojiPreview, setNewEmojiPreview] = useState('');
+	const [errors, setErrors] = useState({ name: false, emoji: false, aliases: false });
+
+	const setEmojiPreview = useCallback(
+		async (file: Blob) => {
+			setEmojiFile(file);
+			setNewEmojiPreview(URL.createObjectURL(file));
+			setErrors((prevState) => ({ ...prevState, emoji: false }));
+		},
+		[setEmojiFile],
+	);
+
+	const dispatchToastMessage = useToastMessageDispatch();
+	const queryClient = useQueryClient();
+
+	const { mutateAsync: saveAction } = useEndpointUploadMutation('/v1/emoji-custom.create', {
+		onSuccess: () => {
+			dispatchToastMessage({ type: 'success', message: t('Custom_Emoji_Added_Successfully') });
+			queryClient.invalidateQueries({ queryKey: ['emoji-custom.list'] });
+			onChange();
+			close();
+		},
+	});
+
+	const handleSave = useCallback(async () => {
+		if (!name) {
+			return setErrors((prevState) => ({ ...prevState, name: true }));
+		}
+
+		if (name === aliases) {
+			return setErrors((prevState) => ({ ...prevState, aliases: true }));
+		}
+
+		if (!emojiFile) {
+			return setErrors((prevState) => ({ ...prevState, emoji: true }));
+		}
+
+		const formData = new FormData();
+		formData.append('emoji', emojiFile);
+		formData.append('name', name);
+		formData.append('aliases', aliases);
+		await saveAction(formData);
+	}, [emojiFile, name, aliases, saveAction]);
+
+	const [clickUpload] = useSingleFileInput(setEmojiPreview, 'emoji');
+
+	const handleChangeName = (e: ChangeEvent<HTMLInputElement>): void => {
+		if (e.currentTarget.value !== '') {
+			setErrors((prevState) => ({ ...prevState, name: false }));
+		}
+
+		return setName(e.currentTarget.value);
+	};
+
+	const handleChangeAliases = (e: ChangeEvent<HTMLInputElement>): void => {
+		if (e.currentTarget.value !== name) {
+			setErrors((prevState) => ({ ...prevState, aliases: false }));
+		}
+
+		return setAliases(e.currentTarget.value);
+	};
+
+	return (
+		<>
+			<ContextualbarScrollableContent {...props}>
+				<Field>
+					<FieldLabel>{t('Name')}</FieldLabel>
+					<FieldRow>
+						<TextInput value={name} onChange={handleChangeName} placeholder={t('Name')} />
+					</FieldRow>
+					{errors.name && <FieldError>{t('Required_field', { field: t('Name') })}</FieldError>}
+				</Field>
+				<Field>
+					<FieldLabel>{t('Aliases')}</FieldLabel>
+					<FieldRow>
+						<TextInput value={aliases} onChange={handleChangeAliases} placeholder={t('Aliases')} />
+					</FieldRow>
+					{errors.aliases && <FieldError>{t('Custom_Emoji_Error_Same_Name_And_Alias')}</FieldError>}
+				</Field>
+				<Field>
+					<FieldRow>
+						<FieldLabel id={emojiLabelId}>{t('Custom_Emoji')}</FieldLabel>
+						<IconButton aria-labelledby={emojiLabelId} variant='secondary' size='small' icon='upload' onClick={clickUpload} />
+					</FieldRow>
+					{errors.emoji && <FieldError>{t('Required_field', { field: t('Custom_Emoji') })}</FieldError>}
+					{newEmojiPreview && (
+						<Box display='flex' flexDirection='row' marginInline='neg-x4' justifyContent='center'>
+							<Margins inline={4}>
+								<Box is='img' objectFit='contain' width='x120' height='x120' src={newEmojiPreview} />
+							</Margins>
+						</Box>
+					)}
+				</Field>
+			</ContextualbarScrollableContent>
+			<ContextualbarFooter>
+				<ButtonGroup stretch>
+					<Button onClick={close}>{t('Cancel')}</Button>
+					<Button variant='primary' onClick={handleSave}>
+						{t('Save')}
+					</Button>
+				</ButtonGroup>
+			</ContextualbarFooter>
+		</>
+	);
+};
+
+export default AddCustomEmoji;

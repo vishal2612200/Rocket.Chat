@@ -1,0 +1,99 @@
+import { css } from '@rocket.chat/css-in-js';
+import { Box, Button, Icon, Scrollable, useStyle } from '@rocket.chat/fuselage';
+import { useOutsideClick, useMergedRefs } from '@rocket.chat/fuselage-hooks';
+import { useContext, useRef } from 'react';
+
+import ScreenThumbnail from './ScreenThumbnail';
+import { context } from '../../Context';
+import { openCreateNewScreenAction, createNewScreenAction } from '../../Context/action';
+import { useHorizontalScroll } from '../../hooks/useHorizontalScroll';
+
+const CreateNewScreenContainer = () => {
+	const {
+		state: { projects, screens, activeProject, openCreateNewScreen },
+		dispatch,
+	} = useContext(context);
+	const ref = useRef(null);
+
+	const onClosehandler = () => {
+		dispatch(openCreateNewScreenAction(false));
+	};
+	useOutsideClick([ref], onClosehandler);
+
+	const scrollRef = useHorizontalScroll();
+
+	const mergedRef = useMergedRefs(scrollRef, ref);
+	const plusIconClassName = useStyle(css`
+		cursor: pointer;
+		transition: var(--animation-default);
+		&:hover {
+			scale: 1.1;
+			transition: var(--animation-default);
+		}
+	`);
+
+	const createNewScreenhandler = () => {
+		dispatch(createNewScreenAction());
+	};
+
+	return (
+		<Scrollable horizontal>
+			<Box
+				ref={mergedRef}
+				width='100%'
+				height='250px'
+				borderBlockEnd='var(--default-border)'
+				position='fixed'
+				paddingInline='40px'
+				className={css`
+					top: -255px;
+					left: 0;
+					z-index: 10;
+					align-items: center;
+					display: flex;
+					justify-content: center;
+					background-color: var(--primaryBackgroundColor);
+					box-shadow: var(--elements-box-shadow);
+					transform: translateY(${openCreateNewScreen ? '255px' : '0px'});
+					transition: var(--animation-default);
+				`}
+			>
+				<Box
+					position='fixed'
+					display='flex'
+					className={css`
+						top: 20px;
+						right: 20px;
+					`}
+				>
+					<Button square size='tiny' onClick={onClosehandler}>
+						<Icon name='cross' size='x15' />
+					</Button>
+				</Box>
+				{openCreateNewScreen && (
+					<Box
+						width='max-content'
+						display='flex'
+						className={css`
+							gap: 50px;
+							align-items: center;
+						`}
+					>
+						{projects[activeProject]?.screens
+							.map((id) => screens[id])
+							.map((screen, i) => (
+								<ScreenThumbnail
+									screen={screen}
+									key={i}
+									disableDelete={projects[activeProject]?.screens.map((id) => screens[id]).length <= 1}
+								/>
+							))}
+						<Icon onClick={createNewScreenhandler} size='60px' name='plus' className={plusIconClassName} />
+					</Box>
+				)}
+			</Box>
+		</Scrollable>
+	);
+};
+
+export default CreateNewScreenContainer;

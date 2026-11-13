@@ -1,0 +1,96 @@
+import type { ILivechatContact, ILivechatContactChannel, Serialized } from '@rocket.chat/core-typings';
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemMeta, ItemRow, ItemTitle } from '@rocket.chat/fuselage';
+import type { GenericMenuItemProps } from '@rocket.chat/ui-client';
+import { GenericMenu } from '@rocket.chat/ui-client';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useBlockChannel } from './useBlockChannel';
+import { OmnichannelRoomIcon } from '../../../../../components/RoomIcon/OmnichannelRoomIcon';
+import { useTimeFromNow } from '../../../../../hooks/useTimeFromNow';
+import { useOutboundMessageModal } from '../../../components/outboundMessage/modals/OutboundMessageModal';
+import { useVisitorInfo } from '../../../directory/hooks/useVisitorInfo';
+import { useOmnichannelSource } from '../../../hooks/useOmnichannelSource';
+
+export type ContactInfoChannelsItemProps = Serialized<ILivechatContactChannel> & {
+	contact?: Pick<ILivechatContact, '_id' | 'unknown'>;
+	canSendOutboundMessage?: boolean;
+};
+
+const ContactInfoChannelsItem = ({
+	contact,
+	visitor,
+	details,
+	blocked,
+	lastChat,
+	canSendOutboundMessage,
+}: ContactInfoChannelsItemProps) => {
+	const { t } = useTranslation();
+	const { getSourceLabel, getSourceName } = useOmnichannelSource();
+	const getTimeFromNow = useTimeFromNow(true);
+
+	const { data: visitorData } = useVisitorInfo(visitor.visitorId);
+
+	const channelLabel = useMemo(() => {
+		const phone = getSourceLabel(details);
+		const externalId = details?.id ? visitorData?.externalIds?.find((e) => e.appId === details.id) : undefined;
+		const username = externalId?.metadata?.username;
+
+		if (typeof username === 'string' && phone) {
+			return `${username} - ${phone}`;
+		}
+		return typeof username === 'string' ? username : phone;
+	}, [visitorData?.externalIds, details, getSourceLabel]);
+
+	const handleBlockContact = useBlockChannel({ association: visitor, blocked });
+	const outboundMessageModal = useOutboundMessageModal();
+
+	const menuItems = useMemo(() => {
+		const items: GenericMenuItemProps[] = [
+			{
+				id: 'block',
+				icon: 'ban',
+				content: blocked ? t('Unblock') : t('Block'),
+				variant: 'danger',
+				onClick: handleBlockContact,
+			},
+		];
+
+		if (canSendOutboundMessage) {
+			items.unshift({
+				id: 'outbound-message',
+				icon: 'send',
+				disabled: contact?.unknown,
+				tooltip: contact?.unknown ? t('error-unknown-contact') : undefined,
+				content: t('Outbound_message'),
+				onClick: () => outboundMessageModal.open({ contactId: contact?._id, providerId: details.id }),
+			});
+		}
+
+		return items;
+	}, [blocked, canSendOutboundMessage, contact?._id, contact?.unknown, details.id, handleBlockContact, outboundMessageModal, t]);
+
+	return (
+		<Item role='listitem' inset='lg'>
+			{details && (
+				<ItemMedia variant='icon'>
+					<OmnichannelRoomIcon source={details} size='x18' placement='default' />
+				</ItemMedia>
+			)}
+			<ItemContent>
+				<ItemRow>
+					<ItemTitle>
+						{details && getSourceName(details)} {blocked && `(${t('Blocked')})`}
+					</ItemTitle>
+					{lastChat && <ItemMeta>{getTimeFromNow(lastChat.ts)}</ItemMeta>}
+				</ItemRow>
+				{channelLabel && <ItemDescription>{channelLabel}</ItemDescription>}
+			</ItemContent>
+			<ItemActions reveal='hover'>
+				<GenericMenu detached title={t('Options')} sections={[{ items: menuItems }]} />
+			</ItemActions>
+		</Item>
+	);
+};
+
+export default ContactInfoChannelsItem;

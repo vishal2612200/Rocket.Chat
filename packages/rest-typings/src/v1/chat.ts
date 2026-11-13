@@ -1,0 +1,1101 @@
+import type { IMessage, IRoom, MessageAttachment, IReadReceiptWithUser, MessageUrl, IThreadMainMessage } from '@rocket.chat/core-typings';
+
+import { ajv, ajvQuery } from './Ajv';
+import { paginationQueryProperties } from './pagination';
+import type { PaginatedRequest } from '../helpers/PaginatedRequest';
+
+type ChatSendMessageFields = Partial<
+	Pick<
+		IMessage,
+		| '_id'
+		| 'rid'
+		| 'tmid'
+		| 'tshow'
+		| 'msg'
+		| 'alias'
+		| 'emoji'
+		| 'avatar'
+		| 'attachments'
+		| 'blocks'
+		| 'customFields'
+		| 'location'
+		| 'groupable'
+		| 't'
+		| 'e2e'
+		| 'e2eMentions'
+		| 'content'
+	>
+> & { parseUrls?: boolean; text?: string };
+
+type ChatSendMessage = {
+	message: ChatSendMessageFields;
+	previewUrls?: string[];
+};
+
+const chatSendMessageSchema = {
+	type: 'object',
+	properties: {
+		message: {
+			type: 'object',
+			properties: {
+				_id: {
+					type: 'string',
+					nullable: true,
+				},
+				rid: {
+					type: 'string',
+				},
+				tmid: {
+					type: 'string',
+					nullable: true,
+				},
+				msg: {
+					type: 'string',
+					nullable: true,
+				},
+				alias: {
+					type: 'string',
+					nullable: true,
+				},
+				emoji: {
+					type: 'string',
+					nullable: true,
+				},
+				tshow: {
+					type: 'boolean',
+					nullable: true,
+				},
+				avatar: {
+					type: 'string',
+					nullable: true,
+				},
+				attachments: {
+					type: 'array',
+					items: {
+						type: 'object',
+					},
+					nullable: true,
+				},
+				blocks: {
+					type: 'array',
+					items: {
+						type: 'object',
+						allOf: [
+							{
+								if: { properties: { type: { enum: ['actions', 'context'] } }, required: ['type'] },
+								then: { properties: { elements: { type: 'array', items: { type: 'object' } } }, required: ['elements'] },
+							},
+							{
+								if: { properties: { type: { const: 'section' } }, required: ['type'] },
+								then: { properties: { fields: { type: 'array', items: { type: 'object' } } } },
+							},
+							{
+								if: { properties: { type: { const: 'input' } }, required: ['type'] },
+								then: { properties: { element: { type: 'object' } }, required: ['element'] },
+							},
+						],
+					},
+					nullable: true,
+				},
+				customFields: {
+					type: 'object',
+					nullable: true,
+				},
+				location: {
+					type: 'object',
+					nullable: true,
+				},
+				parseUrls: {
+					type: 'boolean',
+					nullable: true,
+				},
+				text: {
+					type: 'string',
+					nullable: true,
+				},
+				groupable: {
+					type: 'boolean',
+					nullable: true,
+				},
+				t: {
+					type: 'string',
+					nullable: true,
+				},
+				e2e: {
+					type: 'string',
+					nullable: true,
+				},
+				e2eMentions: {
+					type: 'object',
+					nullable: true,
+				},
+				content: {
+					type: 'object',
+					nullable: true,
+				},
+			},
+		},
+		previewUrls: {
+			type: 'array',
+			items: {
+				type: 'string',
+			},
+			nullable: true,
+		},
+	},
+	required: ['message'],
+	additionalProperties: false,
+};
+
+export const isChatSendMessageProps = ajv.compile<ChatSendMessage>(chatSendMessageSchema);
+
+export const chatSendMessageFieldNames: readonly string[] = Object.keys(chatSendMessageSchema.properties.message.properties);
+
+type ChatGetMessage = {
+	msgId: IMessage['_id'];
+};
+
+const ChatGetMessageSchema = {
+	type: 'object',
+	description: 'Fetch a single message by its `msgId`.',
+	properties: {
+		msgId: {
+			type: 'string',
+			minLength: 1,
+			description: 'The message id.',
+		},
+	},
+	required: ['msgId'],
+	additionalProperties: false,
+};
+
+export const isChatGetMessageProps = ajv.compile<ChatGetMessage>(ChatGetMessageSchema);
+
+type ChatGetMessages = {
+	messageIds: IMessage['_id'][];
+};
+
+const ChatGetMessagesSchema = {
+	type: 'object',
+	description: 'Fetch several messages at once, possibly spanning different rooms.',
+	properties: {
+		messageIds: {
+			type: 'array',
+			items: {
+				type: 'string',
+				minLength: 1,
+			},
+			minItems: 1,
+			maxItems: 100,
+			description: 'The message ids to fetch.',
+		},
+	},
+	required: ['messageIds'],
+	additionalProperties: false,
+};
+
+export const isChatGetMessagesProps = ajv.compile<ChatGetMessages>(ChatGetMessagesSchema);
+
+type ChatGetDiscussions = PaginatedRequest<{
+	roomId: IRoom['_id'];
+	text?: string;
+}>;
+
+const ChatGetDiscussionsSchema = {
+	type: 'object',
+	properties: {
+		roomId: {
+			type: 'string',
+			minLength: 1,
+		},
+		text: {
+			type: 'string',
+		},
+		...paginationQueryProperties,
+	},
+	required: ['roomId'],
+	additionalProperties: false,
+};
+
+export const isChatGetDiscussionsProps = ajvQuery.compile<ChatGetDiscussions>(ChatGetDiscussionsSchema);
+
+type ChatReportMessage = {
+	messageId: IMessage['_id'];
+	description: string;
+};
+
+const ChatReportMessageSchema = {
+	type: 'object',
+	properties: {
+		messageId: {
+			type: 'string',
+		},
+		description: {
+			type: 'string',
+		},
+	},
+	required: ['messageId', 'description'],
+	additionalProperties: false,
+};
+
+export const isChatReportMessageProps = ajv.compile<ChatReportMessage>(ChatReportMessageSchema);
+
+type ChatGetThreadsList = PaginatedRequest<{
+	rid: IRoom['_id'];
+	type?: 'unread' | 'following';
+	text?: string;
+}>;
+
+const ChatGetThreadsListSchema = {
+	type: 'object',
+	properties: {
+		rid: {
+			type: 'string',
+		},
+		type: {
+			type: 'string',
+			enum: ['following', 'unread'],
+			nullable: true,
+		},
+		text: {
+			type: 'string',
+			nullable: true,
+		},
+		...paginationQueryProperties,
+		sort: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	required: ['rid'],
+	additionalProperties: false,
+};
+
+export const isChatGetThreadsListProps = ajvQuery.compile<ChatGetThreadsList>(ChatGetThreadsListSchema);
+
+type ChatSyncThreadsList = {
+	rid: IRoom['_id'];
+	updatedSince: string;
+};
+
+const ChatSyncThreadsListSchema = {
+	type: 'object',
+	properties: {
+		rid: {
+			type: 'string',
+			minLength: 1,
+		},
+		updatedSince: {
+			type: 'string',
+			format: 'iso-date-time',
+		},
+	},
+	required: ['rid', 'updatedSince'],
+	additionalProperties: false,
+};
+
+export const isChatSyncThreadsListProps = ajv.compile<ChatSyncThreadsList>(ChatSyncThreadsListSchema);
+
+type ChatDelete =
+	| {
+			msgId: IMessage['_id'];
+			roomId: IRoom['_id'];
+			asUser?: boolean;
+	  }
+	| {
+			fileId: string;
+			asUser?: boolean;
+	  };
+
+const ChatDeleteSchema = {
+	type: 'object',
+	properties: {
+		msgId: {
+			type: 'string',
+		},
+		roomId: {
+			type: 'string',
+		},
+		fileId: {
+			type: 'string',
+		},
+		asUser: {
+			type: 'boolean',
+			nullable: true,
+		},
+	},
+	anyOf: [{ required: ['msgId', 'roomId'] }, { required: ['fileId'] }],
+	additionalProperties: false,
+};
+
+export const isChatDeleteProps = ajv.compile<ChatDelete>(ChatDeleteSchema);
+
+type ChatReact =
+	| { emoji: string; messageId: IMessage['_id']; shouldReact?: boolean }
+	| { reaction: string; messageId: IMessage['_id']; shouldReact?: boolean };
+
+const ChatReactSchema = {
+	oneOf: [
+		{
+			type: 'object',
+			properties: {
+				emoji: {
+					type: 'string',
+				},
+				messageId: {
+					type: 'string',
+					minLength: 1,
+				},
+				shouldReact: {
+					type: 'boolean',
+					nullable: true,
+				},
+			},
+			required: ['emoji', 'messageId'],
+			additionalProperties: false,
+		},
+		{
+			type: 'object',
+			properties: {
+				reaction: {
+					type: 'string',
+				},
+				messageId: {
+					type: 'string',
+					minLength: 1,
+				},
+				shouldReact: {
+					type: 'boolean',
+					nullable: true,
+				},
+			},
+			required: ['reaction', 'messageId'],
+			additionalProperties: false,
+		},
+	],
+};
+
+export const isChatReactProps = ajv.compile<ChatReact>(ChatReactSchema);
+
+/**
+ * The param `ignore` cannot be boolean, since this is a GET method. Use strings 'true' or 'false' instead.
+ * @param {string} ignore
+ */
+type ChatIgnoreUser = {
+	rid: string;
+	userId: string;
+	ignore: string;
+};
+
+const ChatIgnoreUserSchema = {
+	type: 'object',
+	properties: {
+		rid: {
+			type: 'string',
+			minLength: 1,
+		},
+		userId: {
+			type: 'string',
+			minLength: 1,
+		},
+		ignore: {
+			type: 'string',
+			minLength: 1,
+		},
+	},
+	required: ['rid', 'userId', 'ignore'],
+	additionalProperties: false,
+};
+
+export const isChatIgnoreUserProps = ajv.compile<ChatIgnoreUser>(ChatIgnoreUserSchema);
+
+type ChatSearch = PaginatedRequest<{
+	roomId: IRoom['_id'];
+	searchText: string;
+}>;
+
+const ChatSearchSchema = {
+	type: 'object',
+	properties: {
+		roomId: {
+			type: 'string',
+		},
+		searchText: {
+			type: 'string',
+		},
+		...paginationQueryProperties,
+	},
+	required: ['roomId', 'searchText'],
+	additionalProperties: false,
+};
+
+export const isChatSearchProps = ajvQuery.compile<ChatSearch>(ChatSearchSchema);
+
+interface IChatUpdate {
+	roomId: IRoom['_id'];
+	msgId: string;
+}
+
+interface IChatUpdateText extends IChatUpdate {
+	text: string;
+	previewUrls?: string[];
+	customFields?: IMessage['customFields'];
+}
+
+interface IChatUpdateEncrypted extends IChatUpdate {
+	content: Required<IMessage>['content'];
+	e2eMentions?: IMessage['e2eMentions'];
+}
+
+type ChatUpdate = IChatUpdateText | IChatUpdateEncrypted;
+
+const ChatUpdateSchema = {
+	oneOf: [
+		{
+			type: 'object',
+			properties: {
+				roomId: {
+					type: 'string',
+				},
+				msgId: {
+					type: 'string',
+				},
+				text: {
+					type: 'string',
+				},
+				previewUrls: {
+					type: 'array',
+					items: {
+						type: 'string',
+					},
+					nullable: true,
+				},
+				customFields: {
+					type: 'object',
+					nullable: true,
+				},
+			},
+			required: ['roomId', 'msgId', 'text'],
+			additionalProperties: false,
+		},
+		{
+			type: 'object',
+			properties: {
+				roomId: {
+					type: 'string',
+				},
+				msgId: {
+					type: 'string',
+				},
+				content: {
+					type: 'object',
+					discriminator: {
+						propertyName: 'algorithm',
+					},
+					oneOf: [
+						{
+							type: 'object',
+							properties: {
+								algorithm: {
+									const: 'rc.v1.aes-sha2',
+								},
+								ciphertext: {
+									type: 'string',
+									minLength: 1,
+								},
+							},
+							required: ['algorithm', 'ciphertext'],
+							additionalProperties: false,
+						},
+						{
+							type: 'object',
+							properties: {
+								algorithm: {
+									const: 'rc.v2.aes-sha2',
+								},
+								ciphertext: {
+									type: 'string',
+									minLength: 1,
+								},
+								iv: {
+									type: 'string',
+									minLength: 1,
+								},
+								kid: {
+									type: 'string',
+									minLength: 1,
+								},
+							},
+							required: ['algorithm', 'ciphertext', 'iv', 'kid'],
+							additionalProperties: false,
+						},
+					],
+				},
+				e2eMentions: {
+					type: 'object',
+					properties: {
+						e2eUserMentions: {
+							type: 'array',
+							items: { type: 'string' },
+							nullable: true,
+						},
+						e2eChannelMentions: {
+							type: 'array',
+							items: { type: 'string' },
+							nullable: true,
+						},
+					},
+					required: [],
+					additionalProperties: false,
+					nullable: true,
+				},
+			},
+			required: ['roomId', 'msgId', 'content'],
+			additionalProperties: false,
+		},
+	],
+};
+
+export const isChatUpdateProps = ajv.compile<ChatUpdate>(ChatUpdateSchema);
+
+type ChatGetMessageReadReceipts = {
+	messageId: IMessage['_id'];
+};
+
+const ChatGetMessageReadReceiptsSchema = {
+	type: 'object',
+	properties: {
+		messageId: {
+			type: 'string',
+		},
+	},
+	required: ['messageId'],
+	additionalProperties: false,
+};
+
+export const isChatGetMessageReadReceiptsProps = ajv.compile<ChatGetMessageReadReceipts>(ChatGetMessageReadReceiptsSchema);
+
+type GetStarredMessages = {
+	roomId: IRoom['_id'];
+	count?: number;
+	offset?: number;
+	sort?: string;
+};
+
+const GetStarredMessagesSchema = {
+	type: 'object',
+	properties: {
+		roomId: {
+			type: 'string',
+			minLength: 1,
+		},
+		...paginationQueryProperties,
+		sort: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	required: ['roomId'],
+	additionalProperties: false,
+};
+
+export const isChatGetStarredMessagesProps = ajvQuery.compile<GetStarredMessages>(GetStarredMessagesSchema);
+
+type GetPinnedMessages = {
+	roomId: IRoom['_id'];
+	count?: number;
+	offset?: number;
+	sort?: string;
+};
+
+const GetPinnedMessagesSchema = {
+	type: 'object',
+	properties: {
+		roomId: {
+			type: 'string',
+			minLength: 1,
+		},
+		...paginationQueryProperties,
+		sort: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	required: ['roomId'],
+	additionalProperties: false,
+};
+
+export const isChatGetPinnedMessagesProps = ajvQuery.compile<GetPinnedMessages>(GetPinnedMessagesSchema);
+
+type GetMentionedMessages = {
+	roomId: IRoom['_id'];
+	count?: number;
+	offset?: number;
+	sort?: string;
+};
+
+const GetMentionedMessagesSchema = {
+	type: 'object',
+	properties: {
+		roomId: {
+			type: 'string',
+			minLength: 1,
+		},
+		...paginationQueryProperties,
+		sort: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	required: ['roomId'],
+	additionalProperties: false,
+};
+
+export const isChatGetMentionedMessagesProps = ajvQuery.compile<GetMentionedMessages>(GetMentionedMessagesSchema);
+
+type ChatSyncMessages = {
+	roomId: IRoom['_id'];
+	lastUpdate?: string;
+	fromTs?: string;
+	count?: number;
+	next?: string;
+	previous?: string;
+	type?: 'UPDATED' | 'DELETED';
+};
+
+const ChatSyncMessagesSchema = {
+	type: 'object',
+	properties: {
+		roomId: {
+			type: 'string',
+		},
+		lastUpdate: {
+			type: 'string',
+			nullable: true,
+		},
+		fromTs: {
+			type: 'string',
+			format: 'iso-date-time',
+		},
+		count: {
+			type: 'number',
+			nullable: true,
+		},
+		next: {
+			type: 'string',
+			nullable: true,
+		},
+		previous: {
+			type: 'string',
+			nullable: true,
+		},
+		type: {
+			type: 'string',
+			enum: ['UPDATED', 'DELETED'],
+			nullable: true,
+		},
+	},
+	required: ['roomId'],
+	additionalProperties: false,
+};
+
+export const isChatSyncMessagesProps = ajvQuery.compile<ChatSyncMessages>(ChatSyncMessagesSchema);
+
+type ChatSyncThreadMessages = PaginatedRequest<{
+	tmid: string;
+	updatedSince: string;
+}>;
+
+const ChatSyncThreadMessagesSchema = {
+	type: 'object',
+	properties: {
+		tmid: {
+			type: 'string',
+			minLength: 1,
+		},
+		updatedSince: {
+			type: 'string',
+			format: 'iso-date-time',
+		},
+		...paginationQueryProperties,
+		sort: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	required: ['tmid', 'updatedSince'],
+	additionalProperties: false,
+};
+
+export const isChatSyncThreadMessagesProps = ajvQuery.compile<ChatSyncThreadMessages>(ChatSyncThreadMessagesSchema);
+
+type ChatGetThreadMessages = PaginatedRequest<{
+	tmid: string;
+	aroundId?: string;
+}>;
+
+const ChatGetThreadMessagesSchema = {
+	type: 'object',
+	properties: {
+		tmid: {
+			type: 'string',
+			minLength: 1,
+		},
+		aroundId: {
+			type: 'string',
+			minLength: 1,
+			nullable: true,
+		},
+		...paginationQueryProperties,
+		sort: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	required: ['tmid'],
+	additionalProperties: false,
+};
+
+export const isChatGetThreadMessagesProps = ajvQuery.compile<ChatGetThreadMessages>(ChatGetThreadMessagesSchema);
+
+type ChatGetDeletedMessages = PaginatedRequest<{
+	roomId: IRoom['_id'];
+	since: string;
+}>;
+
+const ChatGetDeletedMessagesSchema = {
+	type: 'object',
+	properties: {
+		roomId: {
+			type: 'string',
+			minLength: 1,
+		},
+		since: {
+			type: 'string',
+			minLength: 1,
+			format: 'iso-date-time',
+		},
+		...paginationQueryProperties,
+		sort: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	required: ['roomId', 'since'],
+	additionalProperties: false,
+};
+
+export const isChatGetDeletedMessagesProps = ajvQuery.compile<ChatGetDeletedMessages>(ChatGetDeletedMessagesSchema);
+
+type ChatPostMessage =
+	| {
+			roomId: string | string[];
+			text?: string;
+			alias?: string;
+			emoji?: string;
+			avatar?: string;
+			attachments?: MessageAttachment[];
+			customFields?: IMessage['customFields'];
+	  }
+	| {
+			channel: string | string[];
+			text?: string;
+			alias?: string;
+			emoji?: string;
+			avatar?: string;
+			attachments?: MessageAttachment[];
+			customFields?: IMessage['customFields'];
+	  };
+
+const ChatPostMessageSchema = {
+	oneOf: [
+		{
+			type: 'object',
+			description:
+				'Post a message to a room by its id. Provide `roomId`; optionally provide `text` or attachments, and `tmid` to reply in a thread.',
+			properties: {
+				roomId: {
+					oneOf: [
+						{ type: 'string' },
+						{
+							type: 'array',
+							items: {
+								type: 'string',
+							},
+						},
+					],
+					description: 'The room id (or array of room ids) to post to.',
+				},
+				text: {
+					type: 'string',
+					nullable: true,
+					description: 'The text content of the message.',
+				},
+				alias: {
+					type: 'string',
+					nullable: true,
+					description: "A name to display as the message author instead of the sender's username.",
+				},
+				emoji: {
+					type: 'string',
+					nullable: true,
+					description: 'Emoji to display as the message avatar (e.g. ":smile:").',
+				},
+				avatar: {
+					type: 'string',
+					nullable: true,
+					description: 'URL of an image to display as the message avatar.',
+				},
+				attachments: {
+					type: 'array',
+					items: {
+						type: 'object',
+					},
+					nullable: true,
+					description: 'Rich-content attachments for the message.',
+				},
+				tmid: {
+					type: 'string',
+					description: 'Thread parent message id. Only valid together with `roomId`.',
+				},
+				customFields: {
+					type: 'object',
+					nullable: true,
+					description: 'Custom fields to store on the message.',
+				},
+				parseUrls: {
+					type: 'boolean',
+					description: 'Whether URLs in the message should be parsed for previews.',
+				},
+			},
+			required: ['roomId'],
+			additionalProperties: false,
+		},
+		{
+			type: 'object',
+			description:
+				'Post a message to a channel by its name (e.g. "#general"). Provide `channel`; optionally provide `text` or attachments.',
+			properties: {
+				channel: {
+					oneOf: [
+						{ type: 'string' },
+						{
+							type: 'array',
+							items: {
+								type: 'string',
+							},
+						},
+					],
+					description: 'The channel name (e.g. "general" or "#general") to post to.',
+				},
+				text: {
+					type: 'string',
+					nullable: true,
+					description: 'The text content of the message.',
+				},
+				alias: {
+					type: 'string',
+					nullable: true,
+					description: "A name to display as the message author instead of the sender's username.",
+				},
+				emoji: {
+					type: 'string',
+					nullable: true,
+					description: 'Emoji to display as the message avatar (e.g. ":smile:").',
+				},
+				avatar: {
+					type: 'string',
+					nullable: true,
+					description: 'URL of an image to display as the message avatar.',
+				},
+				attachments: {
+					type: 'array',
+					items: {
+						type: 'object',
+					},
+					nullable: true,
+					description: 'Rich-content attachments for the message.',
+				},
+				customFields: {
+					type: 'object',
+					nullable: true,
+					description: 'Custom fields to store on the message.',
+				},
+				parseUrls: {
+					type: 'boolean',
+					description: 'Whether URLs in the message should be parsed for previews.',
+				},
+			},
+			required: ['channel'],
+			additionalProperties: false,
+		},
+	],
+};
+
+export const isChatPostMessageProps = ajv.compile<ChatPostMessage>(ChatPostMessageSchema);
+
+type ChatGetURLPreview = {
+	roomId: IRoom['_id'];
+	url: string;
+};
+
+const ChatGetURLPreviewSchema = {
+	type: 'object',
+	properties: {
+		roomId: {
+			type: 'string',
+		},
+		url: {
+			type: 'string',
+		},
+	},
+	required: ['roomId', 'url'],
+	additionalProperties: false,
+};
+
+export const isChatGetURLPreviewProps = ajv.compile<ChatGetURLPreview>(ChatGetURLPreviewSchema);
+
+// Public mirror of the implementation-derived routes (apps/meteor/server/api/v1/chat.ts,
+// `ExtractRoutesFromAPI<typeof chatEndpoints>`). Kept identical so the two declarations merge
+// without TS2320, and so SDK/external consumers that don't compile apps/meteor keep these routes.
+export type ChatEndpoints = {
+	'/v1/chat.pinMessage': {
+		POST: (params: { messageId: IMessage['_id'] }) => { message: IMessage };
+	};
+	'/v1/chat.unPinMessage': {
+		POST: (params: { messageId: IMessage['_id'] }) => void;
+	};
+	'/v1/chat.readThread': {
+		POST: (params: { tmid: IMessage['_id'] }) => void;
+	};
+	'/v1/chat.update': {
+		POST: (params: ChatUpdate) => { message: IMessage };
+	};
+	'/v1/chat.starMessage': {
+		POST: (params: { messageId: IMessage['_id'] }) => void;
+	};
+	'/v1/chat.unStarMessage': {
+		POST: (params: { messageId: IMessage['_id'] }) => void;
+	};
+	'/v1/chat.followMessage': {
+		POST: (params: { mid: string }) => void;
+	};
+	'/v1/chat.unfollowMessage': {
+		POST: (params: { mid: string }) => void;
+	};
+	'/v1/chat.react': {
+		POST: (params: ChatReact) => void;
+	};
+	'/v1/chat.reportMessage': {
+		POST: (params: ChatReportMessage) => void;
+	};
+	'/v1/chat.delete': {
+		POST: (params: ChatDelete) => {
+			_id?: string;
+			ts?: string;
+			message?: Pick<IMessage, '_id' | 'rid' | 'u'>;
+		};
+	};
+	'/v1/chat.syncMessages': {
+		GET: (params: ChatSyncMessages) => {
+			result: {
+				updated: IMessage[];
+				deleted: { _id: string; _deletedAt: string }[];
+				cursor?: { next: string | null; previous: string | null };
+			};
+		};
+	};
+	'/v1/chat.getMessage': {
+		GET: (params: ChatGetMessage) => { message: IMessage };
+	};
+	'/v1/chat.postMessage': {
+		POST: (params: ChatPostMessage) => {
+			ts: number;
+			channel: string;
+			message: IMessage;
+		};
+	};
+	'/v1/chat.search': {
+		GET: (params: ChatSearch) => { messages: IMessage[] };
+	};
+	'/v1/chat.sendMessage': {
+		POST: (params: ChatSendMessage) => { message: IMessage };
+	};
+	'/v1/chat.ignoreUser': {
+		GET: (params: ChatIgnoreUser) => void;
+	};
+	'/v1/chat.getDeletedMessages': {
+		GET: (params: ChatGetDeletedMessages) => {
+			messages: Pick<IMessage, '_id'>[];
+			count: number;
+			offset: number;
+			total: number;
+		};
+	};
+	'/v1/chat.getPinnedMessages': {
+		GET: (params: GetPinnedMessages) => {
+			messages: IMessage[];
+			count: number;
+			offset: number;
+			total: number;
+		};
+	};
+	'/v1/chat.getThreadsList': {
+		GET: (params: ChatGetThreadsList) => {
+			threads: IThreadMainMessage[];
+			count: number;
+			offset: number;
+			total: number;
+		};
+	};
+	'/v1/chat.syncThreadsList': {
+		GET: (params: ChatSyncThreadsList) => {
+			threads: { update: IMessage[]; remove: IMessage[] };
+		};
+	};
+	'/v1/chat.getThreadMessages': {
+		GET: (params: ChatGetThreadMessages) => {
+			messages: IMessage[];
+			count: number;
+			offset: number;
+			total: number;
+		};
+	};
+	'/v1/chat.syncThreadMessages': {
+		GET: (params: ChatSyncThreadMessages) => {
+			messages: { update: IMessage[]; remove: IMessage[] };
+		};
+	};
+	'/v1/chat.getMentionedMessages': {
+		GET: (params: GetMentionedMessages) => {
+			messages: IMessage[];
+			count: number;
+			offset: number;
+			total: number;
+		};
+	};
+	'/v1/chat.getStarredMessages': {
+		GET: (params: GetStarredMessages) => {
+			messages: IMessage[];
+			count: number;
+			offset: number;
+			total: number;
+		};
+	};
+	'/v1/chat.getDiscussions': {
+		GET: (params: ChatGetDiscussions) => {
+			messages: IMessage[];
+			total: number;
+		};
+	};
+	'/v1/chat.getURLPreview': {
+		GET: (params: ChatGetURLPreview) => { urlPreview: MessageUrl };
+	};
+	'/v1/chat.getMessages': {
+		POST: (params: ChatGetMessages) => { messages: IMessage[] };
+	};
+	// Not migrated to the validated API builder; declared only here, so no impl augmentation collides.
+	'/v1/chat.getMessageReadReceipts': {
+		GET: (params: ChatGetMessageReadReceipts) => { receipts: IReadReceiptWithUser[] };
+	};
+};

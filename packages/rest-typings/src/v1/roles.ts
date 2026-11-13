@@ -1,0 +1,150 @@
+import type { RocketChatRecordDeleted, IRole, IUserInRole } from '@rocket.chat/core-typings';
+
+import { ajv, ajvQuery } from './Ajv';
+import { paginationQueryProperties } from './pagination';
+import type { PaginatedRequest } from '../helpers/PaginatedRequest';
+
+type RoleDeleteProps = { roleId: IRole['_id'] };
+
+const roleDeletePropsSchema = {
+	type: 'object',
+	properties: {
+		roleId: {
+			type: 'string',
+		},
+	},
+	required: ['roleId'],
+	additionalProperties: false,
+};
+
+export const isRoleDeleteProps = ajv.compile<RoleDeleteProps>(roleDeletePropsSchema);
+
+type RoleAddUserToRoleProps = {
+	username: string;
+	roleId: string;
+	roomId?: string;
+};
+
+const roleAddUserToRolePropsSchema = {
+	type: 'object',
+	properties: {
+		username: {
+			type: 'string',
+		},
+		roleId: {
+			type: 'string',
+		},
+		roomId: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	required: ['username'],
+	additionalProperties: false,
+};
+
+export const isRoleAddUserToRoleProps = ajv.compile<RoleAddUserToRoleProps>(roleAddUserToRolePropsSchema);
+
+type RoleRemoveUserFromRoleProps = {
+	username: string;
+	roleId: string;
+	roomId?: string;
+	scope?: string;
+};
+
+const roleRemoveUserFromRolePropsSchema = {
+	type: 'object',
+	properties: {
+		username: {
+			type: 'string',
+		},
+		roleId: {
+			type: 'string',
+		},
+		roomId: {
+			type: 'string',
+			nullable: true,
+		},
+		scope: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	required: ['username'],
+	additionalProperties: false,
+};
+
+export const isRoleRemoveUserFromRoleProps = ajv.compile<RoleRemoveUserFromRoleProps>(roleRemoveUserFromRolePropsSchema);
+
+type RolesGetUsersInRoleProps = PaginatedRequest<{
+	roomId?: string;
+	role: string;
+}>;
+
+const RolesGetUsersInRolePropsSchema = {
+	type: 'object',
+	properties: {
+		roomId: {
+			type: 'string',
+			nullable: true,
+		},
+		role: {
+			type: 'string',
+		},
+		...paginationQueryProperties,
+		sort: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	required: ['role'],
+	additionalProperties: false,
+};
+
+export const isRolesGetUsersInRoleProps = ajvQuery.compile<RolesGetUsersInRoleProps>(RolesGetUsersInRolePropsSchema);
+
+type RoleSyncProps = {
+	updatedSince?: string;
+};
+
+// Public mirror of the implementation-derived routes (apps/meteor/server/api/v1/roles.ts,
+// `ExtractRoutesFromAPI<typeof rolesRoutes>`). Kept identical so the two declarations merge
+// without TS2320, and so SDK/external consumers that don't compile apps/meteor keep these routes.
+export type RolesEndpoints = {
+	'/v1/roles.list': {
+		GET: (params?: never) => {
+			roles: Omit<IRole, '_updatedAt'>[];
+		};
+	};
+	'/v1/roles.sync': {
+		GET: (params: RoleSyncProps) => {
+			roles: {
+				update: IRole[];
+				remove: RocketChatRecordDeleted<IRole>[];
+			};
+		};
+	};
+
+	'/v1/roles.addUserToRole': {
+		POST: (params: RoleAddUserToRoleProps) => {
+			role: IRole;
+		};
+	};
+
+	'/v1/roles.getUsersInRole': {
+		GET: (params: RolesGetUsersInRoleProps) => {
+			users: IUserInRole[];
+			total: number;
+		};
+	};
+
+	'/v1/roles.delete': {
+		POST: (params: RoleDeleteProps) => void;
+	};
+
+	'/v1/roles.removeUserFromRole': {
+		POST: (params: RoleRemoveUserFromRoleProps) => {
+			role: IRole;
+		};
+	};
+};

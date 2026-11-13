@@ -1,0 +1,103 @@
+import { createFakeVisitor } from '../../mocks/data';
+import { IS_EE } from '../config/constants';
+import { Users } from '../fixtures/userStates';
+import { HomeOmnichannel } from '../page-objects';
+import { createConversation } from '../utils/omnichannel/rooms';
+import { test, expect } from '../utils/test';
+
+const visitor = createFakeVisitor();
+
+const getPrioritySystemMessage = (username: string, priority: string) =>
+	`Priority changed: ${username} changed the priority to ${priority}`;
+
+test.skip(!IS_EE, 'Omnichannel Priorities > Enterprise Only');
+
+test.use({ storageState: Users.user1.state });
+
+test.describe.serial('OC - Priorities [Sidebar]', () => {
+	let poHomeChannel: HomeOmnichannel;
+
+	test.beforeAll(async ({ api }) => {
+		(
+			await Promise.all([
+				api.post('/livechat/users/agent', { username: 'user1' }),
+				api.post('/livechat/users/manager', { username: 'user1' }),
+				api.post('/settings/Livechat_Routing_Method', { value: 'Manual_Selection' }),
+			])
+		).every((res) => expect(res.status()).toBe(200));
+	});
+
+	test.beforeEach(async ({ page }) => {
+		poHomeChannel = new HomeOmnichannel(page);
+	});
+
+	test.beforeEach(async () => {
+		await poHomeChannel.goto();
+	});
+
+	test.beforeEach(async ({ api }) => {
+		await createConversation(api, { visitorName: visitor.name });
+	});
+
+	test.afterAll(async ({ api }) => {
+		(
+			await Promise.all([
+				api.delete('/livechat/users/agent/user1'),
+				api.delete('/livechat/users/manager/user1'),
+				api.post('/settings/Livechat_Routing_Method', { value: 'Auto_Selection' }),
+			])
+		).every((res) => expect(res.status()).toBe(200));
+	});
+
+	test('OC - Priorities [Sidebar] - Update conversation priority', async ({ page }) => {
+		const systemMessage = poHomeChannel.content.lastSystemMessageBody;
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+
+		await test.step('expect to change inquiry priority using sidebar menu', async () => {
+			await poHomeChannel.sidebar.getSidebarItemByName(visitor.name).click();
+			await expect(poHomeChannel.content.btnTakeChat).toBeVisible();
+
+			await expect(poHomeChannel.roomInfo.getLabel('Priority')).not.toBeVisible();
+
+			await poHomeChannel.sidebar.selectPriority(visitor.name, 'Lowest');
+			await systemMessage.locator(`text="${getPrioritySystemMessage('user1', 'Lowest')}"`).waitFor();
+			await expect(poHomeChannel.roomInfo.getLabel('Priority')).toBeVisible();
+			await expect(poHomeChannel.sidebar.getBadgeIndicator(visitor.name, 'Lowest')).toBeVisible();
+			await expect(poHomeChannel.roomInfo.getInfo('Lowest')).toBeVisible();
+
+			await poHomeChannel.sidebar.selectPriority(visitor.name, 'Highest');
+			await systemMessage.locator(`text="${getPrioritySystemMessage('user1', 'Highest')}"`).waitFor();
+			await expect(poHomeChannel.roomInfo.getInfo('Highest')).toBeVisible();
+			await expect(poHomeChannel.sidebar.getBadgeIndicator(visitor.name, 'Highest')).toBeVisible();
+
+			await poHomeChannel.sidebar.selectPriority(visitor.name, 'Unprioritized');
+			await systemMessage.locator(`text="${getPrioritySystemMessage('user1', 'Unprioritized')}"`).waitFor();
+			await expect(poHomeChannel.roomInfo.getLabel('Priority')).not.toBeVisible();
+			await expect(poHomeChannel.sidebar.getBadgeIndicator(visitor.name, 'Unprioritized')).not.toBeVisible();
+		});
+
+		await test.step('expect to change subscription priority using sidebar menu', async () => {
+			await poHomeChannel.content.btnTakeChat.click();
+			await systemMessage.locator('text="joined the channel"').waitFor();
+			await page.waitForTimeout(500);
+
+			await expect(poHomeChannel.roomInfo.getLabel('Priority')).not.toBeVisible();
+
+			await poHomeChannel.sidebar.selectPriority(visitor.name, 'Lowest');
+			await systemMessage.locator(`text="${getPrioritySystemMessage('user1', 'Lowest')}"`).waitFor();
+			await expect(poHomeChannel.roomInfo.getLabel('Priority')).toBeVisible();
+			await expect(poHomeChannel.roomInfo.getInfo('Lowest')).toBeVisible();
+			await expect(poHomeChannel.sidebar.getBadgeIndicator(visitor.name, 'Lowest')).toBeVisible();
+
+			await poHomeChannel.sidebar.selectPriority(visitor.name, 'Highest');
+			await systemMessage.locator(`text="${getPrioritySystemMessage('user1', 'Highest')}"`).waitFor();
+			await expect(poHomeChannel.roomInfo.getInfo('Highest')).toBeVisible();
+			await expect(poHomeChannel.sidebar.getBadgeIndicator(visitor.name, 'Highest')).toBeVisible();
+
+			await poHomeChannel.sidebar.selectPriority(visitor.name, 'Unprioritized');
+			await systemMessage.locator(`text="${getPrioritySystemMessage('user1', 'Unprioritized')}"`).waitFor();
+			await expect(poHomeChannel.roomInfo.getLabel('Priority')).not.toBeVisible();
+			await expect(poHomeChannel.roomInfo.getInfo('Unprioritized')).not.toBeVisible();
+		});
+	});
+});

@@ -1,0 +1,9 @@
+{
+	"extends": "@rocket.chat/tsconfig/server.json",
+  "compilerOptions": {
+    "rootDir": ".",
+		"target": "es2020",
+		"module": "nodenext",
+		"moduleResolution": "nodenext"
+  }
+}

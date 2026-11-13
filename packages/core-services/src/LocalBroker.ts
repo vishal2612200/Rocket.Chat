@@ -1,0 +1,225 @@
+import { EventEmitter } from 'node:events';
+
+import { Logger } from '@rocket.chat/logger';
+import { InstanceStatus } from '@rocket.chat/models';
+import { injectCurrentContext, tracerActiveSpan } from '@rocket.chat/tracing';
+
+import { asyncLocalStorage } from '.';
+import type { EventSignatures } from './events/Events';
+import { LocalServiceRegistry } from './lib/LocalServiceRegistry';
+import type { CallingOptions, IBroker, IBrokerNode } from './types/IBroker';
+import type { ServiceClass, IServiceClass } from './types/ServiceClass';
+
+type ExtendedServiceClass = { instance: IServiceClass; dependencies: string[]; isStarted: boolean };
+
+export type ClusterTransport = {
+	publish(event: string, args: unknown[]): void;
+};
+
+const logger = new Logger('LocalBroker');
+
+const INTERVAL = 1000;
+const TIMEOUT = INTERVAL * 10;
+
+export class LocalBroker implements IBroker {
+	private started = false;
+
+	private registry = new LocalServiceRegistry();
+
+	private events = new EventEmitter();
+
+	private services = new Map<string, ExtendedServiceClass>();
+
+	private pendingServices: Set<string> = new Set();
+
+	private defaultDependencies = ['settings'];
+
+	private clusterTransport?: ClusterTransport;
+
+	async call(method: string, data: any, options?: CallingOptions): Promise<any> {
+		if (options) {
+			logger.warn('Options are not supported in LocalBroker');
+		}
+
+		return tracerActiveSpan(
+			`action ${method}`,
+			{},
+			() => {
+				return asyncLocalStorage.run(
+					{
+						id: 'ctx.id',
+						nodeID: 'ctx.nodeID',
+						requestID: 'ctx.requestID',
+						broker: this,
+					},
+					() => this.registry.resolve(method)?.(data),
+				);
+			},
+			injectCurrentContext(),
+		);
+	}
+
+	async destroyService(instance: ServiceClass): Promise<void> {
+		const namespace = instance.getName();
+
+		instance.getEvents().forEach((event) => event.listeners.forEach((listener) => this.events.removeListener(event.eventName, listener)));
+
+		this.registry.remove(instance);
+		instance.removeAllListeners();
+		await instance.stopped();
+
+		this.services.delete(namespace);
+	}
+
+	/**
+	 * Creates a service and adds it to the local broker. In case of the broker is already started, it will start the service automatically.
+	 */
+	createService(instance: IServiceClass, serviceDependencies: string[] = []): void {
+		const serviceName = instance.getName();
+
+		if (!serviceName || serviceName === '') {
+			throw new Error('Service name cannot be empty');
+		}
+
+		if (this.services.has(serviceName)) {
+			throw new Error(`Service ${serviceName} already exists`);
+		}
+
+		// TODO: find a better way to handle default dependencies and avoid loops
+		const dependencies = [...serviceDependencies, ...(serviceName === 'settings' ? [] : this.defaultDependencies)].filter(
+			(dependency) => dependency !== serviceName,
+		);
+
+		void instance.created();
+
+		instance.getEvents().forEach((event) => event.listeners.forEach((listener) => this.events.on(event.eventName, listener)));
+
+		this.registry.add(instance);
+
+		this.services.set(serviceName, { instance, dependencies, isStarted: false });
+		this.registerPendingServices(Array.from(new Set([serviceName, ...dependencies])));
+
+		if (this.started) {
+			void this.start();
+		}
+	}
+
+	/**
+	 * Installs what carries `broadcast()` to the other instances of this deployment. Without one, a broadcast stays
+	 * in this process.
+	 */
+	setClusterTransport(transport: ClusterTransport): void {
+		this.clusterTransport = transport;
+	}
+
+	async broadcast<T extends keyof EventSignatures>(event: T, ...args: Parameters<EventSignatures[T]>): Promise<void> {
+		void this.broadcastLocal(event, ...args);
+
+		this.clusterTransport?.publish(event, args);
+	}
+
+	async broadcastLocal<T extends keyof EventSignatures>(event: T, ...args: Parameters<EventSignatures[T]>): Promise<void> {
+		this.events.emit(event, ...args);
+	}
+
+	/** Service names are unique within a process, so every listener here is the one instance of its service. */
+	async emitToOne<T extends keyof EventSignatures>(event: T, ...args: Parameters<EventSignatures[T]>): Promise<void> {
+		return this.broadcastLocal(event, ...args);
+	}
+
+	async broadcastToServices<T extends keyof EventSignatures>(
+		_services: string[],
+		event: T,
+		...args: Parameters<EventSignatures[T]>
+	): Promise<void> {
+		this.events.emit(event, ...args);
+	}
+
+	async nodeList(): Promise<IBrokerNode[]> {
+		// TODO models should not be called form here. we should create an abstraction to an internal service to perform this query
+		const instances = await InstanceStatus.find({}, { projection: { _id: 1 } }).toArray();
+
+		return instances.map(({ _id }) => ({ id: _id, available: true }));
+	}
+
+	/**
+	 * Registers services to be started. We're assuming that each service will only have one level of dependencies.
+	 */
+	private registerPendingServices(services: string[] = []): void {
+		services
+			.filter((e) => !this.services.has(e) || !this.services.get(e)?.isStarted)
+			.forEach((service) => this.pendingServices.add(service));
+	}
+
+	/**
+	 * Removes a service from the pending services set.
+	 */
+	private removePendingService(service: string): void {
+		this.pendingServices.delete(service);
+	}
+
+	private async startService(service: ExtendedServiceClass): Promise<void> {
+		const serviceName = service.instance.getName();
+
+		if (typeof service === 'string') {
+			logger.debug({ msg: 'Service is not in the services map. Bringing it back to queue', serviceName });
+			return;
+		}
+
+		if (service?.isStarted) {
+			logger.debug({ msg: 'Service already started', serviceName });
+			return;
+		}
+
+		const pendingDependencies = service.dependencies.filter((e) => !this.services.has(e) || !this.services.get(e)?.isStarted);
+		if (pendingDependencies.length > 0) {
+			logger.debug({
+				msg: 'Service has dependencies that are not started yet, bringing it back to queue',
+				serviceName,
+				pendingDependencies,
+			});
+			return;
+		}
+
+		await service.instance.started();
+		this.services.set(serviceName, { ...service, isStarted: true });
+		this.removePendingService(serviceName);
+
+		logger.debug({ msg: 'Service successfully started', serviceName });
+	}
+
+	async start(): Promise<void> {
+		const startTime = Date.now();
+
+		return new Promise((resolve, reject) => {
+			const intervalId = setInterval(async () => {
+				const elapsed = Date.now() - startTime;
+
+				if (this.pendingServices.size === 0) {
+					const availableServices = Array.from(this.services.values()).filter((service) => service.isStarted);
+
+					logger.info({ msg: 'All services available', count: availableServices.length });
+					clearInterval(intervalId);
+					return resolve();
+				}
+
+				if (elapsed > TIMEOUT) {
+					clearInterval(intervalId);
+					const pendingServices = Array.from(this.pendingServices).join(', ');
+					const err = new Error(`Timeout while waiting for LocalBroker services: ${pendingServices}`);
+					logger.error({ msg: 'Timeout while waiting for LocalBroker services', err, pendingServices });
+					return reject(err);
+				}
+
+				for (const service of Array.from(this.pendingServices)) {
+					const serviceInstance = this.services.get(service);
+					if (serviceInstance) {
+						await this.startService(serviceInstance);
+					}
+				}
+
+				logger.debug({ msg: 'Waiting for pending services', count: this.pendingServices.size });
+			}, INTERVAL);
+		});
+	}
+}

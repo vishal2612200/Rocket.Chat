@@ -1,0 +1,72 @@
+import type { IRoom, IUser } from '@rocket.chat/core-typings';
+import { ButtonGroup, IconButton, Skeleton } from '@rocket.chat/fuselage';
+import { GenericMenu, UserInfoAction } from '@rocket.chat/ui-client';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useMemberExists } from '../../../hooks/useMemberExists';
+import type { UserInfoAction as UserInfoActionType } from '../../hooks/useUserInfoActions';
+import { useUserInfoActions } from '../../hooks/useUserInfoActions';
+
+export type UserInfoActionsProps = {
+	user: Pick<IUser, '_id' | 'username' | 'name' | 'sipExtension' | 'federated'>;
+	rid: IRoom['_id'];
+	isInvited?: boolean;
+	backToList?: () => void;
+};
+
+const UserInfoActions = ({ user, rid, isInvited, backToList }: UserInfoActionsProps) => {
+	const { t } = useTranslation();
+	const {
+		data: isMemberData,
+		refetch,
+		isSuccess: membershipCheckSuccess,
+		isPending,
+	} = useMemberExists({ roomId: rid, username: user.username as string });
+
+	const isMember = membershipCheckSuccess && isMemberData?.isMember;
+	const { _id: userId, username, name, sipExtension, federated } = user;
+
+	const { actions: actionsDefinition, menuActions: menuOptions } = useUserInfoActions({
+		rid,
+		user: { _id: userId, username, name, sipExtension, federated },
+		size: 2,
+		isMember,
+		isInvited,
+		reload: () => {
+			backToList?.();
+			refetch();
+		},
+	});
+
+	const menu = useMemo(() => {
+		if (!menuOptions?.length) {
+			return null;
+		}
+
+		return (
+			<GenericMenu
+				button={<IconButton icon='kebab' variant='secondary' />}
+				title={t('More')}
+				key='menu'
+				sections={menuOptions}
+				placement='bottom-end'
+			/>
+		);
+	}, [menuOptions, t]);
+
+	const actions = useMemo(() => {
+		const mapAction = ([key, action]: [string, UserInfoActionType]) => (
+			<UserInfoAction key={key} label={action.content ?? action.title} onClick={action.onClick} icon={action.icon ?? 'kebab'} />
+		);
+
+		return [...actionsDefinition.map(mapAction), menu].filter(Boolean);
+	}, [actionsDefinition, menu]);
+
+	if (isPending) {
+		return <Skeleton width='full' />;
+	}
+	return <ButtonGroup stretch>{actions}</ButtonGroup>;
+};
+
+export default UserInfoActions;

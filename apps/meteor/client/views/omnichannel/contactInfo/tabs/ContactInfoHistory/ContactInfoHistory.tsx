@@ -1,0 +1,131 @@
+import type { ILivechatContact, Serialized } from '@rocket.chat/core-typings';
+import { OmnichannelSourceType } from '@rocket.chat/core-typings';
+import { Box, Select, States, StatesIcon, StatesTitle, Text, Throbber } from '@rocket.chat/fuselage';
+import { useLocalStorage } from '@rocket.chat/fuselage-hooks';
+import { VirtualizedScrollbars, ContextualbarContent, ContextualbarEmptyContent, useHasLicenseModule } from '@rocket.chat/ui-client';
+import { useEndpoint, useSetModal } from '@rocket.chat/ui-contexts';
+import { useQuery } from '@tanstack/react-query';
+import type { Key } from 'react';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Virtuoso } from 'react-virtuoso';
+
+import ContactInfoHistoryItem from './ContactInfoHistoryItem';
+import ListViewport from '../../../../../components/ListViewport';
+import { useItemListNavigation } from '../../../../../hooks/useItemListNavigation';
+import { useOmnichannelSource } from '../../../hooks/useOmnichannelSource';
+import AdvancedContactModal from '../../AdvancedContactModal';
+
+export type ContactInfoHistoryProps = {
+	contact: Serialized<ILivechatContact>;
+	setChatId: (chatId: string) => void;
+};
+
+const isFilterBlocked = (hasLicense: boolean, fieldValue: Key) => !hasLicense && fieldValue !== 'all';
+
+const ContactInfoHistory = ({ contact, setChatId }: ContactInfoHistoryProps) => {
+	const { t } = useTranslation();
+	const setModal = useSetModal();
+	const [storedType, setStoredType] = useLocalStorage<string>('contact-history-type', 'all');
+
+	const { data: hasLicense = false } = useHasLicenseModule('contact-id-verification');
+	const type = isFilterBlocked(hasLicense, storedType) ? 'all' : storedType;
+
+	const { getSourceName } = useOmnichannelSource();
+	const historyListRef = useItemListNavigation();
+
+	const getContactHistory = useEndpoint('GET', '/v1/omnichannel/contacts.history');
+	const { data, isLoading, isError } = useQuery({
+		queryKey: ['getContactHistory', contact._id, type],
+		queryFn: () => getContactHistory({ contactId: contact._id, source: type === 'all' ? undefined : type }),
+	});
+
+	const handleChangeFilter = (value: Key) => {
+		if (isFilterBlocked(hasLicense, value)) {
+			return setModal(<AdvancedContactModal onCancel={() => setModal(null)} />);
+		}
+
+		setStoredType(value as string);
+	};
+
+	const historyFilterOptions: [string, string][] = useMemo(
+		() =>
+			Object.values(OmnichannelSourceType).reduce(
+				(acc, cv) => {
+					let sourceName;
+					const hasSourceType = contact.channels?.find((item) => {
+						sourceName = getSourceName(item.details, false);
+						return item.details.type === cv;
+					});
+
+					if (hasSourceType && sourceName) {
+						acc.push([cv, sourceName]);
+					}
+
+					return acc;
+				},
+				[['all', t('All')]],
+			),
+		[contact.channels, getSourceName, t],
+	);
+
+	return (
+		<ContextualbarContent flush>
+			<Box
+				display='flex'
+				flexDirection='row'
+				padding={24}
+				borderBlockEndWidth='default'
+				borderBlockEndStyle='solid'
+				borderBlockEndColor='extra-light'
+				flexShrink={0}
+			>
+				<Box display='flex' flexDirection='row' flexGrow={1}>
+					<Select
+						aria-label={t('Filter')}
+						value={type}
+						onChange={handleChangeFilter}
+						placeholder={t('Filter')}
+						options={historyFilterOptions}
+						disabled={type === 'all' && data?.history.length === 0}
+					/>
+				</Box>
+			</Box>
+			{isLoading && (
+				<Box paddingInline={24} paddingBlock={12}>
+					<Throbber size='x12' />
+				</Box>
+			)}
+			{isError && (
+				<States>
+					<StatesIcon name='warning' variation='danger' />
+					<StatesTitle>{t('Something_went_wrong')}</StatesTitle>
+				</States>
+			)}
+			{data?.history.length === 0 && (
+				<ContextualbarEmptyContent icon='history' title={t('No_history_yet')} subtitle={t('No_history_yet_description')} />
+			)}
+			{!isError && data?.history && data.history.length > 0 && (
+				<>
+					<Box paddingInline={24} paddingBlock={12}>
+						<Text is='span' color='hint' fontScale='p2'>
+							{t('Showing_current_of_total', { current: data?.history.length, total: data?.total })}
+						</Text>
+					</Box>
+					<ListViewport role='list' ref={historyListRef}>
+						<VirtualizedScrollbars>
+							<Virtuoso
+								totalCount={data.history.length}
+								overscan={25}
+								data={data?.history}
+								itemContent={(index, data) => <ContactInfoHistoryItem key={index} onClick={() => setChatId(data._id)} {...data} />}
+							/>
+						</VirtualizedScrollbars>
+					</ListViewport>
+				</>
+			)}
+		</ContextualbarContent>
+	);
+};
+
+export default ContactInfoHistory;

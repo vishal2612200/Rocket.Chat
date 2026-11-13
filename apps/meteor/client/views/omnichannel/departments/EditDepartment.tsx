@@ -1,0 +1,429 @@
+import type { ILivechatDepartment, ILivechatDepartmentAgents, Serialized } from '@rocket.chat/core-typings';
+import {
+	FieldGroup,
+	Field,
+	FieldLabel,
+	FieldRow,
+	FieldError,
+	TextInput,
+	Box,
+	Icon,
+	Divider,
+	ToggleSwitch,
+	TextAreaInput,
+	ButtonGroup,
+	Button,
+	PaginatedSelectFiltered,
+	FieldHint,
+	Option,
+	Stack,
+} from '@rocket.chat/fuselage';
+import { useDebouncedValue } from '@rocket.chat/fuselage-hooks';
+import { validateEmail } from '@rocket.chat/tools';
+import { Page, PageHeader, PageScrollableContentWithShadow, useHasLicenseModule } from '@rocket.chat/ui-client';
+import { useToastMessageDispatch, useEndpoint, useRouter, usePermission } from '@rocket.chat/ui-contexts';
+import { useQueryClient } from '@tanstack/react-query';
+import { useId, useState } from 'react';
+import { Controller, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+
+import DepartmentsAgentsTable from './DepartmentAgentsTable/DepartmentAgentsTable';
+import DepartmentTags from './DepartmentTags';
+import type { EditDepartmentFormData } from './definitions';
+import { useRoomsList } from './useRoomsList';
+import { formatAgentListPayload } from './utils/formatAgentListPayload';
+import { formatEditDepartmentPayload } from './utils/formatEditDepartmentPayload';
+import { getFormInitialValues } from './utils/getFormInititalValues';
+import { useFormSubmitWithDirtyCheck } from '../../../hooks/useFormSubmitWithDirtyCheck';
+import { EeTextInput, EeTextAreaInput, EeNumberInput, DepartmentBusinessHours } from '../additionalForms';
+import AutoCompleteUnit from '../additionalForms/AutoCompleteUnit';
+import AutoCompleteDepartment from '../components/AutoCompleteDepartment';
+import AutoCompleteDepartmentMultiple from '../components/AutoCompleteDepartmentMultiple';
+
+export type EditDepartmentProps = {
+	id?: string;
+	title: string;
+	data?: Serialized<{
+		department: ILivechatDepartment | null;
+		agents?: ILivechatDepartmentAgents[];
+	}>;
+	allowedToForwardData?: Serialized<{
+		departments: ILivechatDepartment[];
+	}>;
+};
+
+function EditDepartment({ data, id, title, allowedToForwardData }: EditDepartmentProps) {
+	const dispatchToastMessage = useToastMessageDispatch();
+	const { t } = useTranslation();
+	const router = useRouter();
+	const queryClient = useQueryClient();
+
+	const { department, agents = [] } = data || {};
+
+	const { data: hasLicense = false } = useHasLicenseModule('livechat-enterprise');
+	const canManageUnits = usePermission('manage-livechat-units');
+
+	const initialValues = getFormInitialValues({ department, agents, allowedToForwardData });
+
+	const {
+		register,
+		control,
+		handleSubmit,
+		formState: { errors, isDirty, isSubmitting },
+	} = useForm<EditDepartmentFormData>({ defaultValues: initialValues });
+
+	const [fallbackFilter, setFallbackFilter] = useState<string>('');
+	const [isUnitRequired, setUnitRequired] = useState(false);
+
+	const debouncedFallbackFilter = useDebouncedValue(fallbackFilter, 500);
+
+	const { data: roomItems = [], fetchNextPage } = useRoomsList({ text: debouncedFallbackFilter });
+
+	const createDepartment = useEndpoint('POST', '/v1/livechat/department');
+	const updateDepartmentInfo = useEndpoint('PUT', '/v1/livechat/department/:_id', { _id: id || '' });
+	const saveDepartmentAgentsInfoOnEdit = useEndpoint('POST', `/v1/livechat/department/:_id/agents`, { _id: id || '' });
+
+	const handleSave = useFormSubmitWithDirtyCheck(
+		async (data: EditDepartmentFormData) => {
+			try {
+				const { agentList } = data;
+				const payload = formatEditDepartmentPayload(data);
+				const departmentUnit = data.unit ? { _id: data.unit } : undefined;
+
+				if (id) {
+					await updateDepartmentInfo({
+						department: payload,
+						agents: [],
+						departmentUnit,
+					});
+
+					const { agentList: initialAgentList } = initialValues;
+					const agentListPayload = formatAgentListPayload(initialAgentList, agentList);
+
+					if (agentListPayload.upsert.length > 0 || agentListPayload.remove.length > 0) {
+						await saveDepartmentAgentsInfoOnEdit(agentListPayload);
+					}
+				} else {
+					await createDepartment({
+						department: payload,
+						agents: agentList.map(({ agentId, count, order }) => ({ agentId, count, order })),
+						departmentUnit,
+					});
+				}
+
+				queryClient.invalidateQueries({ queryKey: ['/v1/livechat/department/:_id', id] });
+				dispatchToastMessage({ type: 'success', message: t('Saved') });
+				router.navigate('/omnichannel/departments');
+			} catch (error) {
+				dispatchToastMessage({ type: 'error', message: error });
+			}
+		},
+		{ isDirty },
+	);
+
+	const formId = useId();
+	const enabledField = useId();
+	const nameField = useId();
+	const descriptionField = useId();
+	const showOnRegistrationField = useId();
+	const emailField = useId();
+	const showOnOfflineFormField = useId();
+	const offlineMessageChannelNameField = useId();
+	const fallbackForwardDepartmentField = useId();
+	const requestTagBeforeClosingChatField = useId();
+	const chatClosingTagsField = useId();
+	const allowReceiveForwardOffline = useId();
+	const unitFieldId = useId();
+	const agentsLabelId = useId();
+	const departmentsAllowedToForwardFieldId = useId();
+
+	return (
+		<Page flexDirection='row'>
+			<Page>
+				<PageHeader title={title} onClickBack={() => router.navigate('/omnichannel/departments')}>
+					<ButtonGroup>
+						<Button type='submit' form={formId} variant='primary' loading={isSubmitting}>
+							{t('Save')}
+						</Button>
+					</ButtonGroup>
+				</PageHeader>
+				<PageScrollableContentWithShadow>
+					<Box is='form' id={formId} autoComplete='off' onSubmit={handleSubmit(handleSave)} width='full' alignSelf='center' maxWidth='x600'>
+						<FieldGroup>
+							<Field>
+								<FieldRow>
+									<FieldLabel htmlFor={enabledField}>{t('Enabled')}</FieldLabel>
+									<ToggleSwitch id={enabledField} {...register('enabled')} />
+								</FieldRow>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor={nameField} required>
+									{t('Name')}
+								</FieldLabel>
+								<FieldRow>
+									<TextInput
+										id={nameField}
+										error={errors.name?.message}
+										placeholder={t('Name')}
+										{...register('name', { required: t('Required_field', { field: t('Name') }) })}
+									/>
+								</FieldRow>
+								{errors.name && (
+									<FieldError role='alert' id={`${nameField}-error`}>
+										{errors.name?.message}
+									</FieldError>
+								)}
+							</Field>
+							<Field>
+								<FieldLabel htmlFor={descriptionField}>{t('Description')}</FieldLabel>
+								<FieldRow>
+									<TextAreaInput id={descriptionField} placeholder={t('Description')} {...register('description')} />
+								</FieldRow>
+							</Field>
+							<Field>
+								<FieldRow>
+									<FieldLabel htmlFor={showOnRegistrationField}>{t('Show_on_registration_page')}</FieldLabel>
+									<ToggleSwitch id={showOnRegistrationField} {...register('showOnRegistration')} />
+								</FieldRow>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor={emailField} required>
+									{t('Email')}
+								</FieldLabel>
+								<FieldRow>
+									<TextInput
+										id={emailField}
+										error={errors.email?.message}
+										endAddon={<Icon name='mail' size='x20' />}
+										placeholder={t('Email')}
+										{...register('email', {
+											required: t('Required_field', { field: t('Email') }),
+											validate: (email) => validateEmail(email) || t('error-invalid-email-address'),
+										})}
+										aria-describedby={`${emailField}-error`}
+									/>
+								</FieldRow>
+								{errors.email && (
+									<FieldError role='alert' id={`${emailField}-error`}>
+										{errors.email?.message}
+									</FieldError>
+								)}
+							</Field>
+							<Field>
+								<FieldRow>
+									<FieldLabel htmlFor={showOnOfflineFormField}>{t('Show_on_offline_page')}</FieldLabel>
+									<ToggleSwitch id={showOnOfflineFormField} {...register('showOnOfflineForm')} />
+								</FieldRow>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor={offlineMessageChannelNameField}>{t('Livechat_DepartmentOfflineMessageToChannel')}</FieldLabel>
+								<FieldRow>
+									<Controller
+										control={control}
+										name='offlineMessageChannelName'
+										render={({ field: { value, onChange } }) => (
+											<Box display='flex' flexGrow={1} flexShrink={0}>
+												<PaginatedSelectFiltered
+													id={offlineMessageChannelNameField}
+													value={value}
+													onChange={onChange}
+													filter={fallbackFilter}
+													setFilter={setFallbackFilter as (value?: string | number) => void}
+													options={roomItems}
+													placeholder={t('Channel_name')}
+													endReached={() => fetchNextPage()}
+													aria-busy={fallbackFilter !== debouncedFallbackFilter}
+												/>
+											</Box>
+										)}
+									/>
+								</FieldRow>
+							</Field>
+							{hasLicense && (
+								<>
+									<Field>
+										<Controller
+											control={control}
+											name='maxNumberSimultaneousChat'
+											render={({ field }) => (
+												<EeNumberInput
+													{...field}
+													label={t('Max_number_of_chats_per_agent')}
+													placeholder={t('Max_number_of_chats_per_agent_description')}
+												/>
+											)}
+										/>
+									</Field>
+									<Field>
+										<Controller
+											control={control}
+											name='visitorInactivityTimeoutInSeconds'
+											render={({ field }) => (
+												<EeNumberInput
+													{...field}
+													label={t('How_long_to_wait_to_consider_visitor_abandonment_in_seconds')}
+													placeholder={t('Number_in_seconds')}
+												/>
+											)}
+										/>
+									</Field>
+									<Field>
+										<Controller
+											control={control}
+											name='abandonedRoomsCloseCustomMessage'
+											render={({ field }) => (
+												<EeTextInput
+													{...field}
+													label={t('Livechat_abandoned_rooms_closed_custom_message')}
+													placeholder={t('Enter_a_custom_message')}
+												/>
+											)}
+										/>
+									</Field>
+									<Field>
+										<Controller
+											control={control}
+											name='waitingQueueMessage'
+											render={({ field }) => (
+												<EeTextAreaInput {...field} label={t('Waiting_queue_message')} placeholder={t('Waiting_queue_message')} />
+											)}
+										/>
+									</Field>
+									<Field>
+										<FieldLabel htmlFor={departmentsAllowedToForwardFieldId}>{t('List_of_departments_for_forward')}</FieldLabel>
+										<FieldRow>
+											<Box display='flex' width='100%'>
+												<Controller
+													control={control}
+													name='departmentsAllowedToForward'
+													render={({ field: { value, onChange } }) => (
+														<AutoCompleteDepartmentMultiple
+															id={departmentsAllowedToForwardFieldId}
+															withCheckbox
+															showArchived
+															excludeId={id ?? ''}
+															value={value}
+															onChange={onChange}
+														/>
+													)}
+												/>
+											</Box>
+										</FieldRow>
+										<FieldHint>{t('List_of_departments_for_forward_description')}</FieldHint>
+									</Field>
+									<Field>
+										<FieldLabel htmlFor={fallbackForwardDepartmentField}>{t('Fallback_forward_department')}</FieldLabel>
+										<Controller
+											control={control}
+											name='fallbackForwardDepartment'
+											render={({ field: { value, onChange } }) => (
+												<AutoCompleteDepartment
+													id={fallbackForwardDepartmentField}
+													haveNone
+													excludeId={department?._id}
+													value={value}
+													onChange={onChange}
+													onlyMyDepartments
+													showArchived
+													withTitle={false}
+													renderItem={({ label, ...props }) => (
+														<Option {...props} label={<span style={{ whiteSpace: 'normal' }}>{label}</span>} />
+													)}
+												/>
+											)}
+										/>
+									</Field>
+									<Field>
+										<FieldLabel htmlFor={unitFieldId} required={isUnitRequired}>
+											{t('Unit')}
+										</FieldLabel>
+										<FieldRow>
+											<Controller
+												name='unit'
+												control={control}
+												rules={{ required: isUnitRequired ? t('Required_field', { field: t('Unit') }) : false }}
+												render={({ field: { value, onChange } }) => (
+													<AutoCompleteUnit
+														disabled={!!initialValues.unit}
+														haveNone
+														id={unitFieldId}
+														error={errors.unit?.message}
+														aria-describedby={`${unitFieldId}-error`}
+														value={value}
+														onChange={onChange}
+														onLoadItems={(list) => {
+															// NOTE: list.itemCount > 1 to account for the "None" option
+															setUnitRequired(!canManageUnits && list.length > 1);
+														}}
+													/>
+												)}
+											/>
+										</FieldRow>
+										{errors.unit && (
+											<FieldError role='alert' id={`${unitFieldId}-error`}>
+												{errors.unit?.message}
+											</FieldError>
+										)}
+									</Field>
+								</>
+							)}
+							<Field>
+								<FieldRow>
+									<FieldLabel htmlFor={requestTagBeforeClosingChatField}>{t('Request_tag_before_closing_chat')}</FieldLabel>
+									<ToggleSwitch id={requestTagBeforeClosingChatField} {...register('requestTagBeforeClosingChat')} />
+								</FieldRow>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor={chatClosingTagsField}>{t('Conversation_closing_tags')}</FieldLabel>
+								<Controller
+									control={control}
+									name='chatClosingTags'
+									render={({ field: { value, onChange } }) => (
+										<DepartmentTags
+											id={chatClosingTagsField}
+											value={value}
+											onChange={onChange}
+											error={errors.chatClosingTags?.message as string}
+											aria-describedby={`${chatClosingTagsField}-hint ${chatClosingTagsField}-error`}
+										/>
+									)}
+								/>
+								<FieldHint id={`${chatClosingTagsField}-hint`}>{t('Conversation_closing_tags_description')}</FieldHint>
+								{errors.chatClosingTags && (
+									<FieldError aria-live='assertive' id={`${chatClosingTagsField}-error`}>
+										{errors.chatClosingTags?.message}
+									</FieldError>
+								)}
+							</Field>
+							<Field>
+								<FieldRow>
+									<FieldLabel htmlFor={allowReceiveForwardOffline}>{t('Accept_receive_inquiry_no_online_agents')}</FieldLabel>
+									<ToggleSwitch id={allowReceiveForwardOffline} {...register('allowReceiveForwardOffline')} />
+								</FieldRow>
+								<FieldRow>
+									<FieldHint id={`${allowReceiveForwardOffline}-hint`}>{t('Accept_receive_inquiry_no_online_agents_Hint')}</FieldHint>
+								</FieldRow>
+							</Field>
+							<Stack gap={32}>
+								<Stack gap={8}>
+									<Field>
+										<DepartmentBusinessHours bhId={department?.businessHourId} />
+									</Field>
+									<Divider />
+								</Stack>
+								<Field>
+									<FieldLabel id={agentsLabelId}>{t('Agents')}</FieldLabel>
+									<Box display='flex' flexDirection='column' height='50vh'>
+										<DepartmentsAgentsTable aria-labelledby={agentsLabelId} control={control} register={register} />
+									</Box>
+								</Field>
+							</Stack>
+						</FieldGroup>
+					</Box>
+				</PageScrollableContentWithShadow>
+			</Page>
+		</Page>
+	);
+}
+
+export default EditDepartment;

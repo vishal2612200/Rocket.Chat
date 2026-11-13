@@ -1,0 +1,91 @@
+name: 'Setup Node'
+description: 'Setup NodeJS'
+
+inputs:
+  node-version:
+    required: false
+    description: 'Node version. If not provided, read from package.json volta.node'
+  cache-modules:
+    required: false
+    description: 'Cache node_modules'
+  install:
+    required: false
+    description: 'Install dependencies'
+  type:
+    required: false
+    description: 'development or production'
+    default: 'development'
+  NPM_TOKEN:
+    required: false
+    description: 'NPM token'
+  HARDENED_MODE:
+    required: false
+    description: 'Hardened mode'
+    default: '0'
+
+outputs:
+  node-version:
+    description: 'Node version'
+    value: ${{ steps.node-version.outputs.node-version }}
+
+runs:
+  using: composite
+
+  steps:
+    - name: Resolve tool versions
+      shell: bash
+      run: |
+        NODE_VERSION="${{ inputs.node-version }}"
+        if [ -z "$NODE_VERSION" ]; then
+          NODE_VERSION=$(node -p "require('./package.json').volta.node")
+        fi
+        echo "NODE_VERSION: ${NODE_VERSION}"
+        echo "NODE_VERSION=${NODE_VERSION}" >> $GITHUB_ENV
+
+    - name: Use Node.js ${{ env.NODE_VERSION }}
+      id: node-version
+      uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: ${{ inputs.cache-modules && 'yarn' || '' }}
+
+    - name: Cache mongodb-memory-server binary
+      if: inputs.cache-modules
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ${{ runner.temp }}/mongodb-memory-server
+        key: mongoms-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+
+    - name: Configure mongodb-memory-server cache
+      shell: bash
+      run: |
+        CACHE_DIR="${{ runner.temp }}/mongodb-memory-server"
+        echo "MONGOMS_DOWNLOAD_DIR=$CACHE_DIR" >> $GITHUB_ENV
+        echo "MONGOMS_PREFER_GLOBAL_PATH=false" >> $GITHUB_ENV
+
+    - name: yarn login
+      shell: bash
+      if: inputs.NPM_TOKEN
+      run: |
+        echo "//registry.npmjs.org/:_authToken=${{ inputs.NPM_TOKEN }}" > ~/.npmrc
+
+    - name: yarn config
+      if: inputs.install
+      shell: bash
+      run: |
+        yarn config set supportedArchitectures --json '{"os": ["linux"], "cpu": ["arm64", "x64"], "libc": ["glibc", "musl"]}'
+
+    - name: yarn install
+      if: inputs.install && inputs.type == 'development'
+      shell: bash
+      run: YARN_ENABLE_HARDENED_MODE=${{ inputs.HARDENED_MODE }} yarn
+
+    - name: yarn install production
+      if: inputs.install && inputs.type == 'production'
+      shell: bash
+      run: YARN_ENABLE_HARDENED_MODE=${{ inputs.HARDENED_MODE }} yarn workspaces focus --all --production
+
+    - name: restore yarn config file
+      if: inputs.install
+      shell: bash
+      run: git checkout -- .yarnrc.yml

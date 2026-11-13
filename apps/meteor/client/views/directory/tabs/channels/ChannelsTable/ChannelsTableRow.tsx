@@ -1,0 +1,63 @@
+import type { IRoom, Serialized } from '@rocket.chat/core-typings';
+import { Box, Avatar } from '@rocket.chat/fuselage';
+import { GenericTableRow, GenericTableCell } from '@rocket.chat/ui-client';
+import type { KeyboardEvent, MouseEvent } from 'react';
+
+import MarkdownText from '../../../../../components/MarkdownText';
+import { RoomIcon } from '../../../../../components/RoomIcon';
+import { useFormatDate } from '../../../../../hooks/useFormatDate';
+import { roomCoordinator } from '../../../../../lib/rooms/roomCoordinator';
+import RoomTags from '../../../RoomTags';
+
+export type ChannelsTableRowProps = {
+	onClick: (name: IRoom['name'], type: IRoom['t']) => (e: KeyboardEvent | MouseEvent) => void;
+	room: Serialized<IRoom & { belongsTo?: string }>;
+	mediaQuery: boolean;
+};
+
+const ChannelsTableRow = ({ onClick, room, mediaQuery }: ChannelsTableRowProps) => {
+	const formatDate = useFormatDate();
+	const { _id, ts, t, name, fname, usersCount, lastMessage, topic, belongsTo } = room;
+	const avatarUrl = roomCoordinator.getRoomDirectives(t).getAvatarPath(room);
+	const lastMessageTs = lastMessage?.ts;
+
+	return (
+		<GenericTableRow key={_id} onKeyDown={onClick(name, t)} onClick={onClick(name, t)} tabIndex={0} role='link' action>
+			<GenericTableCell>
+				<Box display='flex'>
+					<Box flexGrow={0}>{avatarUrl && <Avatar size='x40' title={fname || name} url={avatarUrl} />}</Box>
+					<Box flexGrow={1} marginInline={8} withTruncatedText>
+						<Box display='flex' alignItems='center'>
+							<RoomIcon room={room} />
+							<Box fontScale='p2m' marginInline={4}>
+								{fname || name}
+							</Box>
+							<RoomTags room={room} />
+						</Box>
+						{topic && <MarkdownText variant='inlineWithoutBreaks' fontScale='p2' color='hint' withTruncatedText content={topic} />}
+					</Box>
+				</Box>
+			</GenericTableCell>
+			<GenericTableCell color='hint' truncate>
+				{usersCount}
+			</GenericTableCell>
+			{mediaQuery && ts && (
+				<GenericTableCell color='hint' truncate>
+					{formatDate(ts)}
+				</GenericTableCell>
+			)}
+			{mediaQuery && (
+				<GenericTableCell color='hint' truncate>
+					{lastMessageTs && formatDate(lastMessageTs)}
+				</GenericTableCell>
+			)}
+			{mediaQuery && (
+				<GenericTableCell color='hint' truncate>
+					{belongsTo}
+				</GenericTableCell>
+			)}
+		</GenericTableRow>
+	);
+};
+
+export default ChannelsTableRow;

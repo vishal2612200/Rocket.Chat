@@ -1,0 +1,36 @@
+import { Box } from '@rocket.chat/fuselage';
+import { useContext } from 'react';
+import { Handle, Position } from 'reactflow';
+import './UIKitWrapper.scss';
+
+import { context } from '../../../Context';
+import type { idType } from '../../../Context/initialState';
+import SurfaceRender from '../../Preview/Display/Surface/SurfaceRender';
+import RenderPayload from '../../RenderPayload/RenderPayload';
+
+export type UIKitWrapperProps = { id: string; data: idType };
+
+const UIKitWrapper = ({ id, data }: UIKitWrapperProps) => {
+	const {
+		state: { screens },
+	} = useContext(context);
+	if (!screens[data]) return null;
+	const { blocks, surface } = screens[data].payload;
+	return (
+		<Box padding='x8' border='var(--default-border)' backgroundColor='white' borderRadius='large'>
+			<Handle type='target' className='react-flow-targetHandle' position={Position.Left} id={`${id}`} />
+			<SurfaceRender type={surface}>
+				{blocks.map((block, index) => (
+					<Box key={index} paddingInlineEnd='x4' className='uiKitWrapper'>
+						<Box position='relative' border='var(--default-border)' padding='x8'>
+							<RenderPayload blocks={[block]} surface={surface} />
+							<Handle type='source' className='react-flow-sourceHandle' position={Position.Right} id={block.actionId} />
+						</Box>
+					</Box>
+				))}
+			</SurfaceRender>
+		</Box>
+	);
+};
+
+export default UIKitWrapper;

@@ -1,0 +1,87 @@
+import type { IOAuthApps, IUser } from '@rocket.chat/core-typings';
+import { Button, ButtonGroup } from '@rocket.chat/fuselage';
+import { Form, FormContainer, FormFooter, FormHeader, FormTitle } from '@rocket.chat/layout';
+import { useLoginToken, useLogout, useRoute } from '@rocket.chat/ui-contexts';
+import { useEffect, useId, useRef } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+
+import CurrentUserDisplay from './CurrentUserDisplay';
+import Layout from './Layout';
+import RichContent from '../../../components/RichContent';
+
+export type AuthorizationFormPageProps = {
+	oauthApp: IOAuthApps;
+	redirectUri: string;
+	user: IUser;
+};
+
+const AuthorizationFormPage = ({ oauthApp, redirectUri, user }: AuthorizationFormPageProps) => {
+	const token = useLoginToken() ?? undefined;
+
+	const formLabelId = useId();
+
+	const { t } = useTranslation();
+
+	const homeRoute = useRoute('home');
+
+	const handleCancelButtonClick = () => {
+		queueMicrotask(() => {
+			homeRoute.push();
+		});
+		window.close();
+	};
+
+	const logout = useLogout();
+
+	const handleLogoutButtonClick = () => {
+		logout();
+	};
+
+	const submitRef = useRef<HTMLButtonElement>(null);
+
+	const hasAuthorized = user.oauth?.authorizedClients?.includes(oauthApp.clientId);
+
+	useEffect(() => {
+		if (hasAuthorized) {
+			submitRef.current?.click();
+		}
+	}, [oauthApp.clientId, hasAuthorized]);
+
+	return (
+		<Layout>
+			<Form method='post' action='' aria-labelledby={formLabelId}>
+				<FormHeader>
+					<FormTitle id={formLabelId}>{t('core.Authorize_access_to_your_account')}</FormTitle>
+				</FormHeader>
+				<FormContainer>
+					<RichContent>
+						<CurrentUserDisplay user={user} />
+
+						<p>
+							<Trans i18nKey='core.OAuth_Full_Access_Warning' t={t} values={{ appName: oauthApp.name }}>
+								<strong>{oauthApp.name}</strong>
+							</Trans>
+						</p>
+					</RichContent>
+					<input type='hidden' name='access_token' value={token} />
+					<input type='hidden' name='client_id' value={oauthApp.clientId} />
+					<input type='hidden' name='redirect_uri' value={redirectUri} />
+					<input type='hidden' name='response_type' value='code' />
+				</FormContainer>
+				<FormFooter>
+					<ButtonGroup stretch>
+						<Button ref={submitRef} type='submit' variant='primary' name='allow' value='yes'>
+							{t('core.Authorize')}
+						</Button>
+						<Button onClick={handleCancelButtonClick}>{t('core.Cancel')}</Button>
+						<Button variant='danger' onClick={handleLogoutButtonClick}>
+							{t('core.Logout')}
+						</Button>
+					</ButtonGroup>
+				</FormFooter>
+			</Form>
+		</Layout>
+	);
+};
+
+export default AuthorizationFormPage;

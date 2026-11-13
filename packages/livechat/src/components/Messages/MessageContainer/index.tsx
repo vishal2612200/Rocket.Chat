@@ -1,0 +1,26 @@
+import type { ComponentChildren } from 'preact';
+import type { CSSProperties } from 'preact/compat';
+import { memo } from 'preact/compat';
+
+import styles from './styles.module.scss';
+import { createClassName } from '../../../helpers/createClassName';
+
+export type MessageContainerProps = {
+	id?: string;
+	compact?: boolean;
+	reverse?: boolean;
+	use?: any;
+	className?: string;
+	style?: CSSProperties;
+	system?: boolean;
+	children?: ComponentChildren;
+};
+
+export const MessageContainer = memo(
+	// TODO: find a better way to pass `use` and do not default to a string
+	({ id, compact, reverse, use: Element = 'div', className, style = {}, children, system = false }: MessageContainerProps) => (
+		<Element id={id} className={createClassName(styles, 'message-container', { compact, reverse, system }, [className])} style={style}>
+			{children}
+		</Element>
+	),
+);

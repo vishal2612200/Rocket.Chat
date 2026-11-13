@@ -1,0 +1,103 @@
+import type { DeviceManagementPopulatedSession } from '@rocket.chat/core-typings';
+import { Box, Button, ButtonGroup, StatusBullet, Text } from '@rocket.chat/fuselage';
+import { UserAvatar } from '@rocket.chat/ui-avatar';
+import {
+	ContextualbarHeader,
+	ContextualbarClose,
+	ContextualbarScrollableContent,
+	ContextualbarFooter,
+	ContextualbarTitle,
+	InfoPanel,
+	InfoPanelField,
+	InfoPanelLabel,
+	InfoPanelText,
+	useFormatDateAndTime,
+} from '@rocket.chat/ui-client';
+import { useRoute, useUserPresence } from '@rocket.chat/ui-contexts';
+import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useDeviceLogout } from '../../../../hooks/useDeviceLogout';
+
+export type DeviceManagementInfoProps = DeviceManagementPopulatedSession;
+
+const DeviceManagementInfo = ({ device, sessionId, loginAt, ip, userId, _user }: DeviceManagementInfoProps) => {
+	const { t } = useTranslation();
+	const deviceManagementRouter = useRoute('device-management');
+	const formatDateAndTime = useFormatDateAndTime();
+
+	const handleDeviceLogout = useDeviceLogout(sessionId, '/v1/sessions/logout');
+
+	const { name: clientName, os, version: rcVersion } = device || {};
+	const { username, name } = _user || {};
+	const userPresence = useUserPresence(userId);
+
+	const handleCloseContextualBar = useCallback((): void => deviceManagementRouter.push({}), [deviceManagementRouter]);
+
+	return (
+		<>
+			<ContextualbarHeader>
+				<ContextualbarTitle>{t('Device_Info')}</ContextualbarTitle>
+				<ContextualbarClose onClick={handleCloseContextualBar} />
+			</ContextualbarHeader>
+			<ContextualbarScrollableContent>
+				<InfoPanel>
+					<InfoPanelField>
+						<InfoPanelLabel>{t('Client')}</InfoPanelLabel>
+						<InfoPanelText>{clientName}</InfoPanelText>
+					</InfoPanelField>
+
+					<InfoPanelField>
+						<InfoPanelLabel>{t('Version')}</InfoPanelLabel>
+						<InfoPanelText>{rcVersion || '—'}</InfoPanelText>
+					</InfoPanelField>
+
+					<InfoPanelField>
+						<InfoPanelLabel>{t('OS')}</InfoPanelLabel>
+						<InfoPanelText>{`${os?.name || ''} ${os?.version || ''}`}</InfoPanelText>
+					</InfoPanelField>
+
+					{username && (
+						<InfoPanelField>
+							<InfoPanelLabel>{t('User')}</InfoPanelLabel>
+							<Box>
+								<UserAvatar username={username} etag={userPresence?.avatarETag} />
+								<Box is='span' paddingInline={8}>
+									<StatusBullet status={userPresence?.status} />
+								</Box>
+								{name && <Box is='span'>{name}</Box>}
+								<Text is='span' color='hint'>
+									{`(${username})`}
+								</Text>
+							</Box>
+						</InfoPanelField>
+					)}
+
+					<InfoPanelField>
+						<InfoPanelLabel>{t('Last_login')}</InfoPanelLabel>
+						<InfoPanelText>{formatDateAndTime(loginAt)}</InfoPanelText>
+					</InfoPanelField>
+
+					<InfoPanelField>
+						<InfoPanelLabel>{t('Device_ID')}</InfoPanelLabel>
+						<InfoPanelText>{sessionId}</InfoPanelText>
+					</InfoPanelField>
+
+					<InfoPanelField>
+						<InfoPanelLabel>{t('IP_Address')}</InfoPanelLabel>
+						<InfoPanelText>{ip}</InfoPanelText>
+					</InfoPanelField>
+				</InfoPanel>
+			</ContextualbarScrollableContent>
+			<ContextualbarFooter>
+				<ButtonGroup stretch>
+					<Button variant='primary' onClick={() => handleDeviceLogout()}>
+						{t('Logout_Device')}
+					</Button>
+				</ButtonGroup>
+			</ContextualbarFooter>
+		</>
+	);
+};
+
+export default DeviceManagementInfo;

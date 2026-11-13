@@ -1,0 +1,44 @@
+import type { Locator, Page } from '@playwright/test';
+
+import { HomeContent } from './home-content';
+import { OmnichannelTransferChatModal, OmnichannelReturnToQueueModal } from './modals';
+
+export class HomeOmnichannelContent extends HomeContent {
+	readonly forwardChatModal: OmnichannelTransferChatModal;
+
+	readonly returnToQueueModal: OmnichannelReturnToQueueModal;
+
+	constructor(page: Page) {
+		super(page);
+		this.forwardChatModal = new OmnichannelTransferChatModal(page);
+		this.returnToQueueModal = new OmnichannelReturnToQueueModal(page);
+	}
+
+	get btnReturnToQueue(): Locator {
+		return this.page.locator('role=button[name="Move to the queue"]');
+	}
+
+	get btnTakeChat(): Locator {
+		return this.page.locator('role=button[name="Take it!"]');
+	}
+
+	get btnReturn(): Locator {
+		return this.header.root.getByRole('button', { name: 'Back' });
+	}
+
+	get btnResume(): Locator {
+		return this.page.locator('role=button[name="Resume"]');
+	}
+
+	get infoHeaderName(): Locator {
+		return this.page.locator('.rcx-room-header').getByRole('heading');
+	}
+
+	async selectCannedResponse(cannedResponseName: string): Promise<void> {
+		await this.composer.inputMessage.pressSequentially('!');
+		const popup = this.composer.boxPopup;
+		await popup.waitFor({ state: 'visible' });
+		await this.composer.inputMessage.pressSequentially(cannedResponseName);
+		await popup.getByRole('option').filter({ hasText: cannedResponseName }).click();
+	}
+}

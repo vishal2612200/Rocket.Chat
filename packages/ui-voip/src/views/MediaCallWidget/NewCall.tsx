@@ -1,0 +1,62 @@
+import { Box, Button, ButtonGroup } from '@rocket.chat/fuselage';
+import { ActionButton } from '@rocket.chat/ui-media';
+import { useTranslation } from 'react-i18next';
+
+import {
+	PeerInfo,
+	PeerAutocomplete,
+	Widget,
+	WidgetFooter,
+	WidgetHandle,
+	WidgetHeader,
+	WidgetContent,
+	DevicePicker,
+	Keypad,
+	useDraggableWidget,
+} from '../../components';
+import { usePeerAutocomplete } from '../../context';
+import { useMediaCallView } from '../../context/MediaCallViewContext';
+import { useWidgetExternalControls } from '../../context/useWidgetExternalControls';
+import { isUnknownPeer } from '../../utils/isUnknownPeer';
+
+const NewCall = () => {
+	const { t } = useTranslation();
+
+	const { onCall, onSelectPeer, targetPeer } = useMediaCallView();
+	const { toggleWidget } = useWidgetExternalControls();
+	const isInline = !useDraggableWidget();
+
+	const autocomplete = usePeerAutocomplete(onSelectPeer, targetPeer);
+
+	return (
+		<Widget>
+			<WidgetHandle />
+			<WidgetHeader title={t('New_call')}>
+				{!isInline && <ActionButton size='tiny' secondary={false} label={t('Close')} icon='cross' onClick={() => toggleWidget()} />}
+			</WidgetHeader>
+			<WidgetContent>
+				<PeerAutocomplete {...autocomplete} />
+				{targetPeer && !isUnknownPeer(targetPeer) && (
+					<Box marginBlock={8}>
+						<PeerInfo {...targetPeer} />
+					</Box>
+				)}
+				{isInline && (
+					<Box display='flex' justifyContent='center' marginBlockStart={12}>
+						<Keypad autoFocus={false} onKeyPress={autocomplete.onKeypadPress} />
+					</Box>
+				)}
+			</WidgetContent>
+			<WidgetFooter>
+				<ButtonGroup stretch>
+					<DevicePicker secondary />
+					<Button size='medium' icon='phone' variant='success' onClick={onCall}>
+						{t('Call')}
+					</Button>
+				</ButtonGroup>
+			</WidgetFooter>
+		</Widget>
+	);
+};
+
+export default NewCall;

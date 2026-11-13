@@ -1,0 +1,98 @@
+import { Accordion, AccordionItem, ButtonGroup, Button, Callout, Stack } from '@rocket.chat/fuselage';
+import { Page, PageHeader, PageScrollableContentWithShadow, PageFooter } from '@rocket.chat/ui-client';
+import { useSetting, useUser } from '@rocket.chat/ui-contexts';
+import { useId } from 'react';
+import { FormProvider, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+
+import ChangePassword from './ChangePassword';
+import EndToEnd from './EndToEnd';
+import TwoFactorEmail from './TwoFactorEmail';
+import TwoFactorTOTP from './TwoFactorTOTP';
+import ContentColumn from '../../../components/ContentColumn';
+import { useRequire2faSetup } from '../../hooks/useRequire2faSetup';
+
+const passwordDefaultValues = { password: '', confirmationPassword: '' };
+
+const AccountSecurityPage = () => {
+	const { t } = useTranslation();
+	const user = useUser();
+
+	const isEmail2FAAvailableForOAuth = useSetting('Accounts_twoFactorAuthentication_email_available_for_OAuth_users');
+	const isOAuthUser = user?.isOAuthUser;
+	const isEmail2FAAllowed = !isOAuthUser || isEmail2FAAvailableForOAuth;
+
+	const methods = useForm({
+		defaultValues: passwordDefaultValues,
+		mode: 'all',
+	});
+	const {
+		reset,
+		formState: { isDirty },
+	} = methods;
+
+	const twoFactorEnabled = useSetting('Accounts_TwoFactorAuthentication_Enabled');
+	const twoFactorTOTP = useSetting('Accounts_TwoFactorAuthentication_By_TOTP_Enabled');
+	const twoFactorByEmailEnabled = useSetting('Accounts_TwoFactorAuthentication_By_Email_Enabled');
+	const e2eEnabled = useSetting('E2E_Enable');
+	const allowPasswordChange = useSetting('Accounts_AllowPasswordChange');
+	const showEmailTwoFactor = twoFactorByEmailEnabled && isEmail2FAAllowed;
+
+	const passwordFormId = useId();
+
+	const require2faSetup = useRequire2faSetup();
+
+	return (
+		<Page>
+			<PageHeader title={t('Security')} />
+			<PageScrollableContentWithShadow>
+				<ContentColumn>
+					{allowPasswordChange && (
+						<FormProvider {...methods}>
+							<Accordion>
+								<AccordionItem title={t('Password')} defaultExpanded={!require2faSetup}>
+									<ChangePassword id={passwordFormId} />
+								</AccordionItem>
+							</Accordion>
+						</FormProvider>
+					)}
+					<Accordion>
+						{(twoFactorTOTP || showEmailTwoFactor) && twoFactorEnabled && (
+							<AccordionItem defaultExpanded={require2faSetup} title={t('Two Factor Authentication')}>
+								<Stack gap='x24'>
+									{require2faSetup && (
+										<Callout type='warning' title={t('Enable_two-factor_authentication')}>
+											{t('Enable_two-factor_authentication_callout_description')}
+										</Callout>
+									)}
+									{twoFactorTOTP && <TwoFactorTOTP />}
+									{showEmailTwoFactor && <TwoFactorEmail />}
+								</Stack>
+							</AccordionItem>
+						)}
+						{e2eEnabled && (
+							<AccordionItem
+								title={t('End-to-end_encryption')}
+								aria-label={t('End-to-end_encryption')}
+								defaultExpanded={!twoFactorEnabled}
+								data-qa-type='e2e-encryption-section'
+							>
+								<EndToEnd />
+							</AccordionItem>
+						)}
+					</Accordion>
+				</ContentColumn>
+			</PageScrollableContentWithShadow>
+			<PageFooter isDirty={isDirty}>
+				<ButtonGroup>
+					<Button onClick={() => reset(passwordDefaultValues)}>{t('Cancel')}</Button>
+					<Button form={passwordFormId} variant='primary' disabled={!isDirty} type='submit'>
+						{t('Save_changes')}
+					</Button>
+				</ButtonGroup>
+			</PageFooter>
+		</Page>
+	);
+};
+
+export default AccountSecurityPage;

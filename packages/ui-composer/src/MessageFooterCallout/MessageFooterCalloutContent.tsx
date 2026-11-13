@@ -1,0 +1,13 @@
+import { Box } from '@rocket.chat/fuselage';
+import type { ComponentProps } from 'react';
+import { forwardRef } from 'react';
+
+export type MessageFooterCalloutContentProps = ComponentProps<typeof Box>;
+
+const MessageFooterCalloutContent = forwardRef<HTMLDivElement, MessageFooterCalloutContentProps>(
+	function MessageFooterCalloutContent(props, ref) {
+		return <Box ref={ref} flexWrap='wrap' textAlign='center' color='default' flexGrow={1} flexShrink={1} {...props} />;
+	},
+);
+
+export default MessageFooterCalloutContent;

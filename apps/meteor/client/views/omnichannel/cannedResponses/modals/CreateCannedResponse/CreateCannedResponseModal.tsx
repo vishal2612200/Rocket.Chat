@@ -1,0 +1,82 @@
+import type { IOmnichannelCannedResponse } from '@rocket.chat/core-typings';
+import { Box } from '@rocket.chat/fuselage';
+import { GenericError, GenericModal } from '@rocket.chat/ui-client';
+import { useEndpoint, useToastMessageDispatch } from '@rocket.chat/ui-contexts';
+import { memo, useCallback } from 'react';
+import { FormProvider, useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+
+import ReportableErrorBoundary from '../../../../../components/ErrorReport/ReportableErrorBoundary';
+import CannedResponseForm from '../../components/CannedResponseForm';
+import type { CannedResponseEditFormData } from '../CannedResponseEdit';
+
+const getInitialData = (cannedResponseData: IOmnichannelCannedResponse | undefined) => ({
+	_id: cannedResponseData?._id || '',
+	shortcut: cannedResponseData?.shortcut || '',
+	text: cannedResponseData?.text || '',
+	tags: cannedResponseData?.tags || [],
+	scope: cannedResponseData?.scope || 'user',
+	departmentId: cannedResponseData?.departmentId || '',
+});
+
+export type CreateCannedResponseModalProps = {
+	cannedResponseData?: IOmnichannelCannedResponse;
+	onClose: () => void;
+	reloadCannedList: () => void;
+};
+
+const CreateCannedResponseModal = ({ cannedResponseData, onClose, reloadCannedList }: CreateCannedResponseModalProps) => {
+	const { t } = useTranslation();
+	const dispatchToastMessage = useToastMessageDispatch();
+
+	const methods = useForm<CannedResponseEditFormData>({ defaultValues: getInitialData(cannedResponseData) });
+	const {
+		handleSubmit,
+		formState: { isDirty },
+	} = methods;
+
+	const saveCannedResponse = useEndpoint('POST', '/v1/canned-responses');
+
+	const handleCreate = useCallback(
+		async ({ departmentId, ...data }: CannedResponseEditFormData) => {
+			try {
+				await saveCannedResponse({
+					...data,
+					_id: cannedResponseData?._id ?? data._id,
+					...(departmentId && { departmentId }),
+				});
+				dispatchToastMessage({
+					type: 'success',
+					message: t(cannedResponseData?._id ? 'Canned_Response_Updated' : 'Canned_Response_Created'),
+				});
+				onClose();
+				reloadCannedList?.();
+			} catch (error) {
+				dispatchToastMessage({ type: 'error', message: error });
+			}
+		},
+		[cannedResponseData?._id, saveCannedResponse, onClose, dispatchToastMessage, t, reloadCannedList],
+	);
+
+	return (
+		<GenericModal
+			icon={null}
+			variant='warning'
+			onCancel={onClose}
+			confirmText={t('Save')}
+			confirmDisabled={!isDirty}
+			title={cannedResponseData?._id ? t('Edit_Canned_Response') : t('Create_canned_response')}
+			wrapperFunction={(props) => <Box is='form' onSubmit={handleSubmit(handleCreate)} {...props} />}
+		>
+			<ReportableErrorBoundary
+				fallbackRender={({ error, componentStack }) => <GenericError icon='circle-exclamation' errorReport={{ error, componentStack }} />}
+			>
+				<FormProvider {...methods}>
+					<CannedResponseForm />
+				</FormProvider>
+			</ReportableErrorBoundary>
+		</GenericModal>
+	);
+};
+
+export default memo(CreateCannedResponseModal);

@@ -1,0 +1,60 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import * as core from '@actions/core';
+
+import { bumpNextVersion } from './bumpNextVersion.js';
+import { setupGitUser } from './gitUtils.js';
+import { publishRelease } from './publishRelease.js';
+import { startPatchRelease } from './startPatchRelease.js';
+import { updatePRDescription } from './updatePRDescription.js';
+
+// const getOptionalInput = (name: string) => core.getInput(name) || undefined;
+
+(async () => {
+	const githubToken = process.env.GITHUB_TOKEN;
+	if (!githubToken) {
+		core.setFailed('Please add the GITHUB_TOKEN to the changesets action');
+		return;
+	}
+
+	// const inputCwd = core.getInput('cwd');
+	// if (inputCwd) {
+	// 	core.info('changing directory to the one given as the input');
+	// 	process.chdir(inputCwd);
+	// }
+
+	core.info('setting git user');
+	await setupGitUser();
+
+	core.info('setting GitHub credentials');
+	fs.writeFileSync(`${process.env.HOME}/.netrc`, `machine github.com\nlogin github-actions[bot]\npassword ${githubToken}`);
+
+	const action = core.getInput('action');
+	const baseRef = core.getInput('base-ref');
+	const ltsVersions = core
+		.getInput('lts-versions')
+		.split(',')
+		.map((version) => version.trim())
+		.filter(Boolean);
+
+	const cwd = process.cwd();
+
+	// TODO this could be configurable
+	const mainPackagePath = path.join(cwd, 'apps', 'meteor');
+
+	if (action === 'publish-final') {
+		await publishRelease({ githubToken, mergeFinal: true, mainPackagePath, ltsVersions });
+	} else if (action === 'cut') {
+		await publishRelease({ githubToken, baseRef, mainPackagePath, ltsVersions });
+	} else if (action === 'next') {
+		await bumpNextVersion({ githubToken, mainPackagePath });
+	} else if (action === 'patch') {
+		await startPatchRelease({ baseRef, githubToken, mainPackagePath });
+	} else if (action === 'update-pr-description') {
+		await updatePRDescription({ githubToken, mainPackagePath });
+	}
+})().catch((err) => {
+	core.error(err);
+	core.setFailed(err.message);
+});

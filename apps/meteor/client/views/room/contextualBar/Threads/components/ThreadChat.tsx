@@ -1,0 +1,152 @@
+import type { IMessage, IThreadMainMessage } from '@rocket.chat/core-typings';
+import { isEditedMessage, isThreadMainMessage } from '@rocket.chat/core-typings';
+import { Box, CheckBox, Field, FieldLabel, FieldRow } from '@rocket.chat/fuselage';
+import { clientCallbacks, ContextualbarContent } from '@rocket.chat/ui-client';
+import { useEndpoint, useUserPreference, useRoomToolbox } from '@rocket.chat/ui-contexts';
+import type { ComponentProps } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import ThreadMessageList from './ThreadMessageList';
+import MessageListErrorBoundary from '../../../MessageList/MessageListErrorBoundary';
+import DropTargetOverlay from '../../../body/DropTargetOverlay';
+import { useFileUploadDropTarget } from '../../../body/hooks/useFileUploadDropTarget';
+import ComposerContainer from '../../../composer/ComposerContainer';
+import RoomComposer from '../../../composer/RoomComposer/RoomComposer';
+import { useChat } from '../../../contexts/ChatContext';
+import { useRoom, useRoomSubscription } from '../../../contexts/RoomContext';
+import { DateListProvider } from '../../../providers/DateListProvider';
+
+export type ThreadChatProps = {
+	mainMessage: IThreadMainMessage;
+	/**
+	 * What Escape on an empty composer does, for a caller where closing the room's thread tab is not it — the
+	 * conference window has a toolbox, but nothing in it that this thread is a tab of.
+	 */
+	onEscape?: () => void;
+} & Omit<ComponentProps<typeof ContextualbarContent>, 'children'>;
+
+const ThreadChat = ({ mainMessage, onEscape, ...boxProps }: ThreadChatProps) => {
+	const chat = useChat();
+
+	if (!chat) {
+		throw new Error('No ChatContext provided');
+	}
+
+	const sendToChannelPreference = useUserPreference<'always' | 'never' | 'default'>('alsoSendThreadToChannel');
+
+	const [sendToChannel, setSendToChannel] = useState(() => {
+		switch (sendToChannelPreference) {
+			case 'always':
+				return true;
+			case 'never':
+				return false;
+			default:
+				return !mainMessage.tcount;
+		}
+	});
+
+	const handleSend = useCallback((): void => {
+		if (sendToChannelPreference === 'default') {
+			setSendToChannel(false);
+		}
+	}, [sendToChannelPreference]);
+
+	const { closeTab } = useRoomToolbox();
+	const handleComposerEscape = onEscape ?? closeTab;
+
+	const [fileUploadTriggerProps, fileUploadOverlayProps] = useFileUploadDropTarget();
+
+	const handleNavigateToPreviousMessage = useCallback((): void => {
+		chat?.messageEditing.toPreviousMessage();
+	}, [chat?.messageEditing]);
+
+	const handleNavigateToNextMessage = useCallback((): void => {
+		chat?.messageEditing.toNextMessage();
+	}, [chat?.messageEditing]);
+
+	const room = useRoom();
+	const readThread = useEndpoint('POST', '/v1/chat.readThread');
+	useEffect(() => {
+		clientCallbacks.add(
+			'streamNewMessage',
+			(msg: IMessage) => {
+				if (room._id !== msg.rid || isEditedMessage(msg) || msg.tmid !== mainMessage._id) {
+					return;
+				}
+
+				void Promise.resolve(readThread({ tmid: mainMessage._id })).catch(() => undefined);
+			},
+			clientCallbacks.priority.MEDIUM,
+			`thread-${room._id}`,
+		);
+
+		return () => {
+			clientCallbacks.remove('streamNewMessage', `thread-${room._id}`);
+		};
+	}, [mainMessage._id, readThread, room._id]);
+
+	const subscription = useRoomSubscription();
+	const sendToChannelID = useId();
+	const { t } = useTranslation();
+
+	const [shouldJumpToBottom, setShouldJumpToBottom] = useState(true);
+
+	return (
+		// The caller's own props before the drop target's, so no caller can take `onDragEnter` off it by accident.
+		<ContextualbarContent flush {...boxProps} {...fileUploadTriggerProps}>
+			<DateListProvider>
+				<DropTargetOverlay {...fileUploadOverlayProps} />
+				<Box
+					is='section'
+					position='relative'
+					display='flex'
+					flexDirection='column'
+					flexGrow={1}
+					flexShrink={1}
+					flexBasis='auto'
+					height='full'
+				>
+					<MessageListErrorBoundary>
+						<ThreadMessageList
+							mainMessage={mainMessage}
+							shouldJumpToBottom={shouldJumpToBottom}
+							setShouldJumpToBottom={setShouldJumpToBottom}
+						/>
+					</MessageListErrorBoundary>
+
+					<RoomComposer aria-label={t('Thread_composer')}>
+						<ComposerContainer
+							tmid={mainMessage._id}
+							threadExists={isThreadMainMessage(mainMessage)}
+							subscription={subscription}
+							onSend={handleSend}
+							onEscape={handleComposerEscape}
+							onNavigateToPreviousMessage={handleNavigateToPreviousMessage}
+							onNavigateToNextMessage={handleNavigateToNextMessage}
+							tshow={sendToChannel}
+						>
+							<Box paddingBlock={8}>
+								<Field>
+									<FieldRow>
+										<Box display='flex' alignItems='center' minWidth={0} gap={8}>
+											<CheckBox
+												id={sendToChannelID}
+												checked={sendToChannel}
+												onChange={() => setSendToChannel((checked) => !checked)}
+												name='alsoSendThreadToChannel'
+											/>
+											<FieldLabel htmlFor={sendToChannelID}>{t('Also_send_to_channel')}</FieldLabel>
+										</Box>
+									</FieldRow>
+								</Field>
+							</Box>
+						</ComposerContainer>
+					</RoomComposer>
+				</Box>
+			</DateListProvider>
+		</ContextualbarContent>
+	);
+};
+
+export default ThreadChat;

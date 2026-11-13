@@ -1,0 +1,117 @@
+import type { ILivechatContact, Serialized } from '@rocket.chat/core-typings';
+import { css } from '@rocket.chat/css-in-js';
+import { Box, Button, ButtonGroup, Callout, IconButton, Tabs, TabsItem, Text, useStyle } from '@rocket.chat/fuselage';
+import { UserAvatar } from '@rocket.chat/ui-avatar';
+import {
+	ContextualbarHeader,
+	ContextualbarIcon,
+	ContextualbarTitle,
+	ContextualbarClose,
+	ContextualbarDialog,
+} from '@rocket.chat/ui-client';
+import { usePermission, useRouteParameter, useSetModal } from '@rocket.chat/ui-contexts';
+import { useTranslation } from 'react-i18next';
+
+import ReviewContactModal from './ReviewContactModal';
+import { useFormatDate } from '../../../../hooks/useFormatDate';
+import { useContactRoute } from '../../hooks/useContactRoute';
+import { useValidCustomFields } from '../hooks/useValidCustomFields';
+import ContactInfoChannels from '../tabs/ContactInfoChannels';
+import ContactInfoDetails from '../tabs/ContactInfoDetails';
+import ContactInfoHistory from '../tabs/ContactInfoHistory';
+
+export type ContactInfoProps = {
+	contact: Serialized<ILivechatContact>;
+	onClose: () => void;
+};
+
+const ContactInfo = ({ contact, onClose }: ContactInfoProps) => {
+	const { t } = useTranslation();
+
+	const setModal = useSetModal();
+	const conflictsCalloutClassName = useStyle(css`
+		margin-block-end: 8px !important;
+		align-items: center !important;
+	`);
+	const handleNavigate = useContactRoute();
+	const context = useRouteParameter('context');
+
+	const formatDate = useFormatDate();
+	const canEditContact = usePermission('edit-omnichannel-contact');
+
+	const { name, emails, phones, conflictingFields, createdAt, lastChat, contactManager, customFields: userCustomFields } = contact;
+
+	const hasConflicts = conflictingFields && conflictingFields?.length > 0;
+	const customFieldEntries = useValidCustomFields(userCustomFields, 'visitor');
+
+	return (
+		<ContextualbarDialog onClose={onClose}>
+			<ContextualbarHeader>
+				<ContextualbarIcon name='user' />
+				<ContextualbarTitle>{t('Contact')}</ContextualbarTitle>
+				<ContextualbarClose onClick={onClose} />
+			</ContextualbarHeader>
+			<Box display='flex' flexDirection='column' paddingInline={24}>
+				{name && (
+					<Box width='100%' paddingBlock={16} display='flex' alignItems='center' justifyContent='space-between'>
+						<Box withTruncatedText display='flex'>
+							<UserAvatar size='x40' title={name} username={name} />
+							<Box withTruncatedText marginInlineStart={16} display='flex' flexDirection='column'>
+								<Text truncate fontScale='h4'>
+									{name}
+								</Text>
+								{lastChat && <Text fontScale='c1'>{`${t('Last_Chat')}: ${formatDate(lastChat.ts)}`}</Text>}
+							</Box>
+						</Box>
+						<IconButton
+							disabled={!canEditContact || hasConflicts}
+							title={canEditContact ? t('Edit') : t('Not_authorized')}
+							size='small'
+							icon='pencil'
+							onClick={() => handleNavigate({ context: 'edit' })}
+						/>
+					</Box>
+				)}
+				{hasConflicts && (
+					<Callout
+						className={conflictsCalloutClassName}
+						icon='members'
+						actions={
+							<ButtonGroup>
+								<Button onClick={() => setModal(<ReviewContactModal onCancel={() => setModal(null)} contact={contact} />)} size='small'>
+									{t('See_conflicts')}
+								</Button>
+							</ButtonGroup>
+						}
+						title={t('Conflicts_found', { conflicts: conflictingFields?.length })}
+					/>
+				)}
+			</Box>
+			<Tabs>
+				<TabsItem onClick={() => handleNavigate({ context: 'details' })} selected={context === 'details'}>
+					{t('Details')}
+				</TabsItem>
+				<TabsItem onClick={() => handleNavigate({ context: 'channels' })} selected={context === 'channels'}>
+					{t('Channels')}
+				</TabsItem>
+				<TabsItem onClick={() => handleNavigate({ context: 'history' })} selected={context === 'history'}>
+					{t('History')}
+				</TabsItem>
+			</Tabs>
+			{context === 'details' && (
+				<ContactInfoDetails
+					contact={contact}
+					createdAt={createdAt}
+					contactManager={contactManager}
+					phones={phones?.map(({ phoneNumber }) => phoneNumber)}
+					emails={emails?.map(({ address }) => address)}
+					customFieldEntries={customFieldEntries}
+				/>
+			)}
+			{context === 'channels' && <ContactInfoChannels contact={contact} />}
+			{context === 'history' && <ContactInfoHistory contact={contact} />}
+		</ContextualbarDialog>
+	);
+};
+
+export default ContactInfo;

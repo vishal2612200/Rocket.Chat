@@ -1,0 +1,103 @@
+import type { IRoom } from '@rocket.chat/core-typings';
+import { useOutsideClick, useStableCallback } from '@rocket.chat/fuselage-hooks';
+import {
+	VideoConfButton,
+	VideoConfPopup,
+	VideoConfPopupContent,
+	VideoConfPopupFooter,
+	VideoConfPopupFooterButtons,
+	VideoConfPopupHeader,
+	VideoConfPopupTitle,
+	useVideoConfCapabilities,
+	useVideoConfControllers,
+	useVideoConfPreferences,
+	useVideoConfSetPreferences,
+	useVideoConfWindowEnabled,
+} from '@rocket.chat/ui-video-conf';
+import { useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import VideoConfPopupDeviceControllers from './VideoConfPopupDeviceControllers';
+import VideoConfPopupRoomInfo from './VideoConfPopupRoomInfo';
+import { useVideoConfRoomName } from '../../hooks/useVideoConfRoomName';
+
+export type StartCallPopupProps = {
+	id: string;
+	loading: boolean;
+	room: IRoom;
+	onClose: () => void;
+	onConfirm: () => void;
+};
+
+const StartCallPopup = ({ id, loading, room, onClose, onConfirm }: StartCallPopupProps) => {
+	const { t } = useTranslation();
+	const ref = useRef<HTMLElement | null>(null);
+	useOutsideClick([ref], !loading ? onClose : () => undefined);
+
+	const setPreferences = useVideoConfSetPreferences();
+	const videoConfPreferences = useVideoConfPreferences();
+	const { controllersConfig, handleToggleMic, handleToggleCam } = useVideoConfControllers(videoConfPreferences);
+	const capabilities = useVideoConfCapabilities();
+	const roomName = useVideoConfRoomName(room);
+
+	const dialogLabel =
+		room.t === 'd' ? `${t('Start_a_call_with__roomName__', { roomName })}` : `${t('Start_a_call_in__roomName__', { roomName })}`;
+
+	// The call window asks how to arrive, on a preflight screen where the user can see themselves — so this
+	// popup doesn't, and a choice made here seconds earlier isn't quietly overruled there. Without that window
+	// this popup is still where mic and camera are chosen.
+	const preflight = useVideoConfWindowEnabled();
+	const showCam = !preflight && !!capabilities.cam;
+	const showMic = !preflight && !!capabilities.mic;
+
+	const handleStartCall = useStableCallback(() => {
+		setPreferences(controllersConfig);
+		onConfirm();
+	});
+
+	const callbackRef = useCallback(
+		(node: HTMLDivElement) => {
+			const onKeyDown = (e: KeyboardEvent) => {
+				if (e.key === 'Escape') {
+					onClose();
+				}
+			};
+
+			ref.current = node;
+			node.addEventListener('keydown', onKeyDown);
+
+			return () => {
+				node.removeEventListener('keydown', onKeyDown);
+				ref.current = null;
+			};
+		},
+		[onClose],
+	);
+
+	return (
+		<VideoConfPopup ref={callbackRef} id={id} aria-label={dialogLabel}>
+			<VideoConfPopupHeader>
+				<VideoConfPopupTitle text={t('Start_a_call')} />
+				<VideoConfPopupDeviceControllers
+					showCam={showCam}
+					showMic={showMic}
+					config={controllersConfig}
+					onToggleCam={handleToggleCam}
+					onToggleMic={handleToggleMic}
+				/>
+			</VideoConfPopupHeader>
+			<VideoConfPopupContent>
+				<VideoConfPopupRoomInfo room={room} />
+			</VideoConfPopupContent>
+			<VideoConfPopupFooter>
+				<VideoConfPopupFooterButtons>
+					<VideoConfButton disabled={loading} variant='primary' onClick={handleStartCall}>
+						{t('Start_call')}
+					</VideoConfButton>
+				</VideoConfPopupFooterButtons>
+			</VideoConfPopupFooter>
+		</VideoConfPopup>
+	);
+};
+
+export default StartCallPopup;

@@ -1,0 +1,214 @@
+/* oxlint-disable @typescript-eslint/no-this-alias */
+
+import type { IMessage, Serialized } from '@rocket.chat/core-typings';
+import { Emitter } from '@rocket.chat/emitter';
+import type { OperationParams, OperationResult } from '@rocket.chat/rest-typings';
+
+import { DDPSDK } from '../DDPSDK';
+import type { Subscription } from '../types/Subscription';
+import type {
+	APILegacy,
+	DPPLegacy,
+	RocketchatSdkLegacyEvents,
+	RocketchatSdkLegacyEventsKeys,
+	RocketchatSdkLegacyEventsValues,
+} from './types/SDKLegacy';
+
+interface RocketchatSDKLegacy extends APILegacy, DPPLegacy {}
+
+export class RocketchatSdkLegacyImpl extends DDPSDK implements RocketchatSDKLegacy {
+	private ev = new Emitter<RocketchatSdkLegacyEvents>();
+
+	get url(): string {
+		return this.connection.url;
+	}
+
+	get users() {
+		const self = this;
+		return {
+			all(): Promise<Serialized<OperationResult<'GET', '/v1/users.list'>>> {
+				return self.rest.get('/v1/users.list', {});
+			},
+			allNames(): Promise<Serialized<OperationResult<'GET', '/v1/users.list'>>> {
+				return self.rest.get('/v1/users.list', {});
+			},
+			allIDs(): Promise<Serialized<OperationResult<'GET', '/v1/users.list'>>> {
+				return self.rest.get('/v1/users.list', {});
+			},
+			online(): Promise<Serialized<OperationResult<'GET', '/v1/users.list'>>> {
+				return self.rest.get('/v1/users.list', {});
+			},
+			onlineNames(): Promise<Serialized<OperationResult<'GET', '/v1/users.list'>>> {
+				return self.rest.get('/v1/users.list', {});
+			},
+			onlineIds(): Promise<Serialized<OperationResult<'GET', '/v1/users.list'>>> {
+				return self.rest.get('/v1/users.list', {});
+			},
+			info(username: string): Promise<Serialized<OperationResult<'GET', '/v1/users.info'>>> {
+				return self.rest.get('/v1/users.info', { username });
+			},
+		};
+	}
+
+	get rooms() {
+		const self = this;
+		return {
+			info: (
+				args:
+					| {
+							roomId: string;
+					  }
+					| {
+							roomName: string;
+					  },
+			): Promise<Serialized<OperationResult<'GET', '/v1/rooms.info'>>> => {
+				return self.rest.get('/v1/rooms.info', args);
+			},
+			join: (rid: string): Promise<Serialized<OperationResult<'POST', '/v1/channels.join'>>> => {
+				return self.rest.post('/v1/channels.join', { roomId: rid });
+			},
+			load: (rid: string, lastUpdate: Date): Promise<Serialized<OperationResult<'GET', '/v1/chat.syncMessages'>>> => {
+				return self.rest.get('/v1/chat.syncMessages', { roomId: rid, lastUpdate: lastUpdate.toISOString() });
+			},
+			leave: (rid: string): Promise<Serialized<OperationResult<'POST', '/v1/channels.leave'>>> => {
+				return self.rest.post('/v1/channels.leave', { roomId: rid });
+			},
+		};
+	}
+
+	joinRoom(args: { rid: string }): Promise<Serialized<OperationResult<'POST', '/v1/channels.join'>>> {
+		return this.rest.post('/v1/channels.join', { roomId: args.rid });
+	}
+
+	loadHistory(rid: string, lastUpdate: Date): Promise<Serialized<OperationResult<'GET', '/v1/chat.syncMessages'>>> {
+		return this.rest.get('/v1/chat.syncMessages', { roomId: rid, lastUpdate: lastUpdate.toISOString() });
+	}
+
+	leaveRoom(rid: string): Promise<Serialized<OperationResult<'POST', '/v1/channels.leave'>>> {
+		return this.rest.post('/v1/channels.leave', { roomId: rid });
+	}
+
+	get dm() {
+		const self = this;
+		return {
+			create(username: string): Promise<Serialized<OperationResult<'POST', '/v1/im.create'>>> {
+				return self.rest.post('/v1/im.create', { username });
+			},
+		};
+	}
+
+	channelInfo(args: { roomName: string } | { roomId: string }): Promise<Serialized<OperationResult<'GET', '/v1/channels.info'>>> {
+		return this.rest.get('/v1/channels.info', args);
+	}
+
+	privateInfo(args: { roomName: string } | { roomId: string }): Promise<Serialized<OperationResult<'GET', '/v1/groups.info'>>> {
+		return this.rest.get('/v1/groups.info', args);
+	}
+
+	editMessage(args: OperationParams<'POST', '/v1/chat.update'>): Promise<Serialized<OperationResult<'POST', '/v1/chat.update'>>> {
+		return this.rest.post('/v1/chat.update', args);
+	}
+
+	setReaction(emoji: string, messageId: string): Promise<Serialized<OperationResult<'POST', '/v1/chat.react'>>> {
+		return this.rest.post('/v1/chat.react', { emoji, messageId });
+	}
+
+	createDirectMessage(username: string): Promise<Serialized<OperationResult<'POST', '/v1/im.create'>>> {
+		return this.rest.post('/v1/im.create', { username });
+	}
+
+	sendMessage(message: IMessage | string, rid: string): Promise<Serialized<OperationResult<'POST', '/v1/chat.sendMessage'>>> {
+		return this.rest.post('/v1/chat.sendMessage', {
+			message:
+				typeof message === 'string'
+					? {
+							msg: message,
+							rid,
+						}
+					: {
+							...message,
+							rid,
+						},
+		});
+	}
+
+	resume({ token }: { token: string }): Promise<unknown> {
+		return this.account.loginWithToken(token);
+	}
+
+	login(credentials: { username: string; password: string }): Promise<unknown> {
+		return this.account.loginWithPassword(credentials.username, credentials.password);
+	}
+
+	onMessage(cb: (data: any) => void) {
+		return this.ev.on('message', cb);
+	}
+
+	methodCall(method: string, ...args: any[]) {
+		return this.client.callAsync(method, ...args);
+	}
+
+	subscribe(topic: string, ...args: any[]) {
+		return this.client.subscribe(topic, ...args).ready();
+	}
+
+	subscribeRoom(rid: string): Promise<Subscription[]> {
+		return Promise.resolve([
+			this.stream('room-messages', rid, (...args) => this.ev.emit('message', args)),
+			this.stream('notify-room', `${rid}/typing`, (...args) => this.ev.emit('typing', args)),
+			this.stream('notify-room', `${rid}/deleteMessage`, (...args) => this.ev.emit('deleteMessage', args)),
+		]);
+	}
+
+	subscribeNotifyAll(): Promise<Subscription[]> {
+		return Promise.resolve([
+			// this.stream('notify-all', 'roles-change', (...args) => this.ev.emit('roles-change', args)),
+			// this.stream('notify-all', 'updateEmojiCustom', (...args) => this.ev.emit('updateEmojiCustom', args)),
+			// this.stream('notify-all', 'deleteEmojiCustom', (...args) => this.ev.emit('deleteEmojiCustom', args)),
+			// this.stream('notify-all', 'updateAvatar', (...args) => this.ev.emit('updateAvatar', args)),
+			this.stream('notify-all', 'public-settings-changed', (...args) => this.ev.emit('public-settings-changed', args)),
+		]);
+	}
+
+	subscribeLoggedNotify(): Promise<Subscription[]> {
+		return Promise.resolve([
+			this.stream('notify-logged', 'Users:NameChanged', (...args) => this.ev.emit('Users:NameChanged', args)),
+			this.stream('notify-logged', 'Users:Deleted', (...args) => this.ev.emit('Users:Deleted', args)),
+			this.stream('notify-logged', 'updateAvatar', (...args) => this.ev.emit('updateAvatar', args)),
+			this.stream('notify-logged', 'updateEmojiCustom', (...args) => this.ev.emit('updateEmojiCustom', args)),
+			this.stream('notify-logged', 'deleteEmojiCustom', (...args) => this.ev.emit('deleteEmojiCustom', args)),
+			this.stream('notify-logged', 'roles-change', (...args) => this.ev.emit('roles-change', args)),
+			this.stream('notify-logged', 'permissions-changed', (...args) => this.ev.emit('permissions-changed', args)),
+		]);
+	}
+
+	subscribeNotifyUser = (): Promise<Subscription[]> => {
+		return Promise.resolve([
+			this.stream('notify-user', `${this.account.uid}/message`, (...args) => this.ev.emit('user-message', args)),
+			this.stream('notify-user', `${this.account.uid}/notification`, (...args) => this.ev.emit('notification', args)),
+			this.stream('notify-user', `${this.account.uid}/rooms-changed`, (...args) => this.ev.emit('rooms-changed', args)),
+			this.stream('notify-user', `${this.account.uid}/subscriptions-changed`, (...args) => this.ev.emit('subscriptions-changed', args)),
+			this.stream('notify-user', `${this.account.uid}/uiInteraction`, (...args) => this.ev.emit('uiInteraction', args)),
+		]);
+	};
+
+	onStreamData<E extends RocketchatSdkLegacyEventsKeys>(event: E, cb: (...data: RocketchatSdkLegacyEventsValues<E>) => void): () => void {
+		return this.ev.on(event, cb as any);
+	}
+
+	async disconnect(): Promise<unknown> {
+		return this.connection.close();
+	}
+
+	connect(_options: { useSsl: boolean; host: string; port: number }) {
+		return this.connection.connect();
+	}
+
+	unsubscribe(subscription: string): Promise<unknown> {
+		return this.client.unsubscribe(subscription);
+	}
+
+	unsubscribeAll(): Promise<unknown> {
+		return Promise.all([...this.client.subscriptions.keys()].map((id) => this.client.unsubscribe(id)));
+	}
+}

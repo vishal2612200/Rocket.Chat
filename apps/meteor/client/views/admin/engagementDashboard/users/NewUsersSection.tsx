@@ -1,0 +1,167 @@
+import { ResponsiveBar } from '@nivo/bar';
+import { Box, FlexContainer, FlexItem, Skeleton, Tooltip } from '@rocket.chat/fuselage';
+import colors from '@rocket.chat/fuselage-tokens/dist/colors.json';
+import { addDays } from 'date-fns/addDays';
+import { differenceInDays } from 'date-fns/differenceInDays';
+import { format } from 'date-fns/format';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import DownloadDataButton from '../../../../components/dashboards/DownloadDataButton';
+import PeriodSelector from '../../../../components/dashboards/PeriodSelector';
+import { usePeriodLabel } from '../../../../components/dashboards/usePeriodLabel';
+import { usePeriodSelectorState } from '../../../../components/dashboards/usePeriodSelectorState';
+import CounterSet from '../../../../components/dataView/CounterSet';
+import { useFormatDate } from '../../../../hooks/useFormatDate';
+import EngagementDashboardCardFilter from '../EngagementDashboardCardFilter';
+import { useNewUsers } from './useNewUsers';
+
+export type NewUsersSectionProps = {
+	timezone: 'utc' | 'local';
+};
+
+const NewUsersSection = ({ timezone }: NewUsersSectionProps) => {
+	const [period, periodSelectorProps] = usePeriodSelectorState('last 7 days', 'last 30 days', 'last 90 days');
+	const periodLabel = usePeriodLabel(period);
+
+	const utc = timezone === 'utc';
+	const { data } = useNewUsers({ period, utc });
+
+	const { t } = useTranslation();
+
+	const formatDate = useFormatDate();
+
+	const [countFromPeriod, variatonFromPeriod, countFromYesterday, variationFromYesterday, values] = useMemo(() => {
+		if (!data) {
+			return [];
+		}
+
+		const startDate = new Date(data.start);
+		const endDate = new Date(data.end);
+		const daysCount = differenceInDays(endDate, startDate) + 1;
+		const values = Array.from({ length: daysCount }, (_, i) => ({
+			date: addDays(startDate, i).toISOString(),
+			newUsers: 0,
+		}));
+		for (const { day, users } of data.days) {
+			const dayDate = new Date(day);
+			const i = differenceInDays(dayDate, startDate);
+			if (i >= 0) {
+				values[i].newUsers += users;
+			}
+		}
+
+		return [data.period.count, data.period.variation, data.yesterday.count, data.yesterday.variation, values];
+	}, [data, utc]);
+
+	return (
+		<>
+			<EngagementDashboardCardFilter>
+				<PeriodSelector {...periodSelectorProps} />
+				<DownloadDataButton
+					attachmentName={`NewUsersSection_start_${data?.start}_end_${data?.end}`}
+					headers={['Date', 'New Users']}
+					dataAvailable={!!data}
+					dataExtractor={(): unknown[][] | undefined => values?.map(({ date, newUsers }) => [date, newUsers])}
+				/>
+			</EngagementDashboardCardFilter>
+			<CounterSet
+				counters={[
+					{
+						count: countFromPeriod ?? <Skeleton variant='rect' width='3ex' height='1em' />,
+						variation: variatonFromPeriod ?? 0,
+						description: periodLabel,
+					},
+					{
+						count: countFromYesterday ?? <Skeleton variant='rect' width='3ex' height='1em' />,
+						variation: variationFromYesterday ?? 0,
+						description: t('Yesterday'),
+					},
+				]}
+			/>
+			<FlexContainer>
+				{values ? (
+					<Box style={{ height: 300 }}>
+						<FlexItem align='stretch' grow={1} shrink={0}>
+							<Box style={{ position: 'relative' }}>
+								<Box
+									style={{
+										position: 'absolute',
+										width: '100%',
+										height: '100%',
+									}}
+								>
+									<ResponsiveBar
+										data={values}
+										indexBy='date'
+										keys={['newUsers']}
+										groupMode='grouped'
+										padding={0.25}
+										margin={{
+											// TODO: Get it from theme
+											bottom: 50,
+											left: 20,
+											top: 20,
+										}}
+										colors={[
+											// TODO: Get it from theme
+											colors.p500,
+										]}
+										enableLabel={false}
+										enableGridY={false}
+										axisTop={null}
+										axisRight={null}
+										axisBottom={{
+											tickSize: values.length > 31 ? 4 : 0,
+											// TODO: Get it from theme
+											tickPadding: 8,
+											tickRotation: values.length > 31 ? 90 : 0,
+											truncateTickAt: 0,
+											format: (date): string => format(new Date(date), 'dd/MM'),
+										}}
+										axisLeft={{
+											tickSize: 0,
+											// TODO: Get it from theme
+											tickPadding: 4,
+											tickRotation: 0,
+										}}
+										animate={true}
+										motionConfig='stiff'
+										theme={{
+											// TODO: Get it from theme
+											axis: {
+												ticks: {
+													text: {
+														fill: colors.n600,
+														fontFamily:
+															'Inter, -apple-system, system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Meiryo UI", Arial, sans-serif',
+														fontSize: '10px',
+														fontStyle: 'normal',
+														fontWeight: 600,
+														letterSpacing: '0.2px',
+														lineHeight: '12px',
+													},
+												},
+											},
+										}}
+										tooltip={({ value, indexValue }) => (
+											<Tooltip>
+												{t('Value_users', { value })}, {formatDate(indexValue)}
+											</Tooltip>
+										)}
+									/>
+								</Box>
+							</Box>
+						</FlexItem>
+					</Box>
+				) : (
+					<Box>
+						<Skeleton variant='rect' height={240} />
+					</Box>
+				)}
+			</FlexContainer>
+		</>
+	);
+};
+
+export default NewUsersSection;

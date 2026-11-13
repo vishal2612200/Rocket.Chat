@@ -1,0 +1,43 @@
+import { Badge, Box, Text } from '@rocket.chat/fuselage';
+import { UserAvatar } from '@rocket.chat/ui-avatar';
+import { useFormatDateAndTime } from '@rocket.chat/ui-client';
+import { usePermission } from '@rocket.chat/ui-contexts';
+
+export type AppRequestItemProps = {
+	seen: boolean;
+	name: string;
+	createdDate: string;
+	message: string;
+	username: string;
+};
+
+const AppRequestItem = ({ seen, name, createdDate, message, username }: AppRequestItemProps) => {
+	const formatDateAndTime = useFormatDateAndTime();
+	const isAdminUser = usePermission('manage-apps');
+
+	return (
+		<Box display='flex' flexDirection='row' paddingBlock={12} paddingInlineEnd={24} marginBlockEnd={8} flexGrow='1'>
+			<Box marginInlineEnd='x8' marginBlockStart='x4' display='flex' flexDirection='row' alignItems='flex-start' height='full'>
+				<Box marginInlineEnd={16} alignSelf='center' height='100%' width='x8'>
+					{!seen && isAdminUser && <Badge small variant='primary' />}
+				</Box>
+				{username && <UserAvatar size='x36' username={username} />}
+			</Box>
+			<Box display='flex' flexDirection='column'>
+				<Box display='flex' flexDirection='row' alignItems='flex-start' marginBlockEnd={4}>
+					<Box fontScale='p2b' marginInlineEnd={4} lineHeight='initial' color='titles-labels'>
+						{name}
+					</Box>
+					<Text fontScale='c1' color='annotation'>
+						{formatDateAndTime(createdDate)}
+					</Text>
+				</Box>
+				<Text fontScale='p2' color='default'>
+					{message}
+				</Text>
+			</Box>
+		</Box>
+	);
+};
+
+export default AppRequestItem;

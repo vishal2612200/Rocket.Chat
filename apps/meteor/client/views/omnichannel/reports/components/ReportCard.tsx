@@ -1,0 +1,62 @@
+import { Box, Card, CardBody, CardCol, CardRow, CardTitle, Icon, Text } from '@rocket.chat/fuselage';
+import type { ComponentProps, ReactNode } from 'react';
+import { forwardRef } from 'react';
+
+import { ReportCardContent } from './ReportCardContent';
+import DownloadDataButton from '../../../../components/dashboards/DownloadDataButton';
+import PeriodSelector from '../../../../components/dashboards/PeriodSelector';
+
+export type ReportCardProps = {
+	id: string;
+	title: string;
+	children: ReactNode;
+	periodSelectorProps: ComponentProps<typeof PeriodSelector>;
+	downloadProps: ComponentProps<typeof DownloadDataButton>;
+	isPending?: boolean;
+	isDataFound?: boolean;
+	minHeight?: number;
+	subtitle?: string;
+	emptyStateSubtitle?: string;
+	isError?: boolean;
+	onRetry?: () => void;
+	chartHeight?: number;
+};
+
+export const ReportCard = forwardRef<HTMLElement, ReportCardProps>(function ReportCard(
+	{ id, title, children, periodSelectorProps, downloadProps, isPending, isDataFound, subtitle, emptyStateSubtitle, isError, onRetry },
+	ref,
+) {
+	return (
+		<Box height='full' display='grid' ref={ref}>
+			<Card aria-busy={isPending} data-qa={id}>
+				<Box rcx-card__header justifyContent='space-between'>
+					<CardCol>
+						<CardTitle>{title}</CardTitle>
+						<Text is='span' color='hint' fontScale='c1' data-qa='report-summary'>
+							{subtitle}
+						</Text>
+					</CardCol>
+					<CardCol>
+						<CardRow>
+							<PeriodSelector name='periodSelector' {...periodSelectorProps} />
+							<DownloadDataButton {...downloadProps} title='Download CSV' size='medium' icon={<Icon name='download' size='x20' />} />
+						</CardRow>
+					</CardCol>
+				</Box>
+				<CardBody flexDirection='column' height='full'>
+					<Box height='full' display='flex' flexDirection='column' justifyContent='center'>
+						<ReportCardContent
+							isPending={isPending}
+							isDataFound={isDataFound}
+							isError={isError}
+							onRetry={onRetry}
+							subtitle={emptyStateSubtitle}
+						>
+							{children}
+						</ReportCardContent>
+					</Box>
+				</CardBody>
+			</Card>
+		</Box>
+	);
+});

@@ -1,0 +1,63 @@
+import type { IRole, IPermission } from '@rocket.chat/core-typings';
+import { Box } from '@rocket.chat/fuselage';
+import { GenericTableRow, GenericTableCell } from '@rocket.chat/ui-client';
+import type { TFunction } from 'i18next';
+import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import RoleCell from './RoleCell';
+import { CONSTANTS } from '../../../../../lib/authorization';
+import { useChangeRole } from '../hooks/useChangeRole';
+
+const getName = (t: TFunction, permission: IPermission): string => {
+	if (permission.level === CONSTANTS.SETTINGS_LEVEL) {
+		let path = '';
+		if (permission.group) {
+			path = `${t(permission.group)} > `;
+		}
+		if (permission.section) {
+			path = `${path}${t(permission.section)} > `;
+		}
+		return `${path}${t(permission.settingId!)}`;
+	}
+
+	return t(permission._id);
+};
+
+export type PermissionRowProps = {
+	permission: IPermission;
+	roleList: IRole[];
+	onGrant: (permissionId: IPermission['_id'], roleId: IRole['_id']) => Promise<void>;
+	onRemove: (permissionId: IPermission['_id'], roleId: IRole['_id']) => Promise<void>;
+};
+
+const PermissionRow = ({ permission, roleList, onGrant, onRemove }: PermissionRowProps) => {
+	const { t } = useTranslation();
+	const { _id: permissionId, roles } = permission;
+	const changeRole = useChangeRole({ onGrant, onRemove, permissionId });
+	const permissionName = getName(t, permission);
+
+	return (
+		<GenericTableRow key={permissionId} role='link' action tabIndex={0}>
+			<GenericTableCell truncate title={t(`${permissionId}_description`)}>
+				<Box maxWidth='x284' withTruncatedText>
+					{permissionName}
+				</Box>
+			</GenericTableCell>
+			{roleList.map(({ _id: roleId, name, description }) => (
+				<RoleCell
+					key={roleId}
+					_id={roleId}
+					name={name}
+					description={description}
+					grantedRoles={roles}
+					onChange={changeRole}
+					permissionId={permissionId}
+					permissionName={permissionName}
+				/>
+			))}
+		</GenericTableRow>
+	);
+};
+
+export default memo(PermissionRow);

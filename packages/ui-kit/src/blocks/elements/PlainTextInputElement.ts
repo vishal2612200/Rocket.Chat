@@ -1,0 +1,12 @@
+import type { Actionable } from '../Actionable.js';
+import type { PlainText } from '../text/PlainText.js';
+
+export type PlainTextInputElement = Actionable<{
+	type: 'plain_text_input';
+	placeholder?: PlainText;
+	initialValue?: string;
+	multiline?: boolean;
+	minLength?: number;
+	maxLength?: number;
+	focus_on_load?: boolean;
+}>;

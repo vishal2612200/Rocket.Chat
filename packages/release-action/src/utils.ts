@@ -1,0 +1,185 @@
+import fs from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+import mdastToString from 'mdast-util-to-string';
+import remarkParse from 'remark-parse';
+import remarkStringify from 'remark-stringify';
+import semver from 'semver';
+import unified from 'unified';
+
+import { getAppsEngineVersion, getMongoVersion, getNodeNpmVersions } from './getMetadata.js';
+
+export const BumpLevels = {
+	dep: 0,
+	patch: 1,
+	minor: 2,
+	major: 3,
+} as const;
+
+export function getChangelogEntry(changelog: string, version: string) {
+	const ast = unified().use(remarkParse).parse(changelog);
+
+	let highestLevel: number = BumpLevels.dep;
+
+	const nodes = (ast as any).children as Array<any>;
+	let headingStartInfo:
+		| {
+				index: number;
+				depth: number;
+		  }
+		| undefined;
+	let endIndex: number | undefined;
+
+	for (let i = 0; i < nodes.length; i++) {
+		const node = nodes[i];
+		if (node.type === 'heading') {
+			const stringified: string = mdastToString(node);
+			const match = stringified.toLowerCase().match(/(major|minor|patch)/);
+			if (match !== null) {
+				const level = BumpLevels[match[0] as 'major' | 'minor' | 'patch'];
+				highestLevel = Math.max(level, highestLevel);
+			}
+			if (headingStartInfo === undefined && stringified === version) {
+				headingStartInfo = {
+					index: i,
+					depth: node.depth,
+				};
+				continue;
+			}
+			if (endIndex === undefined && headingStartInfo !== undefined && headingStartInfo.depth === node.depth) {
+				endIndex = i;
+				break;
+			}
+		}
+	}
+	if (headingStartInfo) {
+		(ast as any).children = nodes.slice(headingStartInfo.index + 1, endIndex);
+	}
+	return {
+		content: unified().use(remarkStringify).stringify(ast),
+		highestLevel,
+	};
+}
+
+type PackageJson = {
+	name: string;
+	version: string;
+	engines?: { node?: string; yarn?: string; npm?: string };
+	houston?: { updateFiles?: string[] };
+	dependencies?: Record<string, string>;
+	devDependencies?: Record<string, string>;
+	peerDependencies?: Record<string, string>;
+};
+
+export async function readPackageJson(cwd: string) {
+	const filePath = path.resolve(cwd, 'package.json');
+	return JSON.parse(await readFile(filePath, 'utf-8')) as PackageJson;
+}
+
+async function getUpdateFilesList(cwd: string): Promise<string[]> {
+	const file = await readPackageJson(cwd);
+	if (!file.houston) {
+		return [];
+	}
+	const { houston } = file;
+
+	if (!houston.updateFiles) {
+		return [];
+	}
+
+	return houston.updateFiles;
+}
+
+export async function bumpFileVersions(cwd: string, oldVersion: string, newVersion: string) {
+	const files = await getUpdateFilesList(cwd);
+
+	await Promise.all(
+		files.map(async (file) => {
+			const filePath = path.join(cwd, file);
+
+			const data = await readFile(filePath, 'utf8');
+
+			await writeFile(filePath, data.replace(oldVersion, newVersion), 'utf8');
+		}),
+	);
+}
+
+export async function createBumpFile(cwd: string, pkgName: string) {
+	const filePath = path.join(cwd, '.changeset', `bump-patch-${Date.now()}.md`);
+
+	const data = `---
+'${pkgName}': patch
+---
+
+Bump ${pkgName} version.
+`;
+
+	await writeFile(filePath, data, 'utf8');
+}
+
+export async function getEngineVersionsMd(cwd: string) {
+	const { node } = await getNodeNpmVersions(cwd);
+	const appsEngine = await getAppsEngineVersion(cwd);
+	const mongo = await getMongoVersion(cwd);
+
+	return `### Engine versions
+
+- Node: \`${node}\`
+- MongoDB: \`${mongo.join(', ')}\`
+- Apps-Engine: \`${appsEngine}\`
+
+`;
+}
+
+export function isPreRelease(cwd: string) {
+	try {
+		fs.accessSync(path.resolve(cwd, '.changeset', 'pre.json'));
+
+		return true;
+	} catch (e) {
+		// nothing to do, not a pre release
+	}
+
+	return false;
+}
+
+// GitHub rejects bodies over these lengths in characters, and JS string length never undercounts them
+export const MAX_PULL_REQUEST_BODY_LENGTH = 65536;
+export const MAX_RELEASE_BODY_LENGTH = 125000;
+
+const TRUNCATION_NOTICE = '\n\n_The change log was truncated. See the full change log in `CHANGELOG.md`._\n';
+
+export function truncateReleaseNotes(releaseBody: string, maxLength: number) {
+	if (releaseBody.length <= maxLength) {
+		return releaseBody;
+	}
+
+	const head = releaseBody.slice(0, Math.max(0, maxLength - TRUNCATION_NOTICE.length));
+	// cut between top-level blocks so no list item or <details> is left open
+	const cut = [...head.matchAll(/\n\n(?=\S)/g)].at(-1)?.index ?? head.length;
+
+	return `${head.slice(0, cut)}${TRUNCATION_NOTICE}`;
+}
+
+export function createTempReleaseNotes(version: string, releaseBody: string, maxLength = MAX_PULL_REQUEST_BODY_LENGTH) {
+	const wrap = (notes: string) => `
+<!-- release-notes-start -->
+<!-- This content is automatically generated. Changing this will not reflect on the final release log -->
+
+_You can see below a preview of the release change log:_
+
+# ${version}
+
+${notes}
+<!-- release-notes-end -->`;
+
+	return wrap(truncateReleaseNotes(releaseBody, maxLength - wrap('').length));
+}
+
+export function getReleaseName(version: string, ltsVersions: string[]) {
+	const parsed = semver.parse(version);
+	const isLts = !!parsed && !parsed.prerelease.length && ltsVersions.includes(`${parsed.major}.${parsed.minor}`);
+
+	return isLts ? `${version} LTS` : version;
+}

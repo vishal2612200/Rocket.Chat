@@ -1,0 +1,56 @@
+import type { Locator, Page } from '@playwright/test';
+
+import { OmnichannelAdmin, OmnichannelSectionsHref } from './omnichannel-admin';
+import { Listbox } from '../fragments/listbox';
+
+export class OmnichannelBusinessHours extends OmnichannelAdmin {
+	protected readonly route = OmnichannelSectionsHref.businessHours;
+
+	protected readonly title = 'Business hours';
+
+	readonly listbox: Listbox;
+
+	constructor(page: Page) {
+		super(page);
+		this.listbox = new Listbox(page);
+	}
+
+	get btnCreateBusinessHour(): Locator {
+		return this.page.locator('header').getByRole('button', { name: 'New', exact: true });
+	}
+
+	get btnSave(): Locator {
+		return this.page.getByRole('button', { name: 'Save', exact: true });
+	}
+
+	get btnBack(): Locator {
+		return this.page.locator('header').getByRole('button', { name: 'Back', exact: true });
+	}
+
+	get inputName(): Locator {
+		return this.page.getByRole('textbox', { name: 'Name', exact: true });
+	}
+
+	get inputDepartments(): Locator {
+		return this.page.getByLabel('Departments', { exact: true });
+	}
+
+	async deleteBusinessHour(name: string) {
+		await this.table.findRowByName(name).getByRole('button', { name: 'Remove' }).click();
+		await this.deleteModal.confirmDelete();
+	}
+
+	getCheckboxByLabel(name: string): Locator {
+		return this.page.locator('label', { has: this.page.getByRole('checkbox', { name }) });
+	}
+
+	findDepartmentsChipOption(name: string) {
+		return this.page.getByRole('listbox').filter({ has: this.inputDepartments }).getByRole('option', { name, exact: true });
+	}
+
+	async selectDepartment(name: string) {
+		await this.inputDepartments.click();
+		await this.inputDepartments.fill(name);
+		await this.listbox.selectOption(name);
+	}
+}

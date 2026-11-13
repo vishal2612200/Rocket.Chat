@@ -1,0 +1,44 @@
+import { ContextualbarEmptyContent, FormSkeleton } from '@rocket.chat/ui-client';
+import { useEndpoint } from '@rocket.chat/ui-contexts';
+import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+
+import EditSound from './EditSound';
+
+export type EditCustomSoundProps = {
+	_id: string | undefined;
+	onChange?: () => void;
+	close: () => void;
+};
+
+function EditCustomSound({ _id, onChange, close, ...props }: EditCustomSoundProps) {
+	const getSound = useEndpoint('GET', '/v1/custom-sounds.getOne');
+	const { t } = useTranslation();
+
+	const { data, isLoading } = useQuery({
+		queryKey: ['custom-sound', _id],
+		queryFn: () => {
+			if (!_id) {
+				throw new Error('Cannot fetch custom sound: missing _id in query.');
+			}
+			return getSound({ _id });
+		},
+		enabled: !!_id,
+	});
+
+	if (isLoading) {
+		return <FormSkeleton paddingInline={20} />;
+	}
+
+	if (!data) {
+		return <ContextualbarEmptyContent icon='warning' title={t('No_results_found')} />;
+	}
+
+	const handleChange: () => void = () => {
+		onChange?.();
+	};
+
+	return <EditSound data={data.sound} close={close} onChange={handleChange} {...props} />;
+}
+
+export default EditCustomSound;

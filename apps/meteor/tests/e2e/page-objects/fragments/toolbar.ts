@@ -1,0 +1,253 @@
+import type { Locator, Page } from '@playwright/test';
+
+import { MenuOptions } from './menu';
+import { OmnichannelCloseChatModal, OmnichannelOnHoldModal } from './modals';
+
+export abstract class Toolbar {
+	constructor(protected root: Locator) {}
+
+	click() {
+		return this.root.click();
+	}
+}
+
+export class RoomToolbar extends Toolbar {
+	readonly menu: MenuOptions;
+
+	constructor(page: Page) {
+		super(page.getByRole('toolbar', { name: 'Primary room actions' }));
+		this.menu = new MenuOptions(page);
+	}
+
+	get btnRoomInfo() {
+		return this.root.getByRole('button', { name: 'Room information' });
+	}
+
+	get btnMembers() {
+		return this.root.getByRole('button', { name: 'Members' });
+	}
+
+	get btnVideoCall() {
+		return this.root.getByRole('button', { name: 'Video Call' });
+	}
+
+	get btnVoiceCall() {
+		return this.root.getByRole('button', { name: 'Voice call' });
+	}
+
+	get btnUserInfo(): Locator {
+		return this.root.getByRole('button', { name: 'User info' });
+	}
+
+	get btnDiscussion(): Locator {
+		return this.root.getByRole('button', { name: 'Discussions' });
+	}
+
+	get btnThreads(): Locator {
+		return this.root.getByRole('button', { name: 'Threads' });
+	}
+
+	get btnFiles(): Locator {
+		return this.root.getByRole('button', { name: 'Files' });
+	}
+
+	get btnMoreOptions(): Locator {
+		return this.root.getByRole('button', { name: 'Options' });
+	}
+
+	get btnSearchMessages(): Locator {
+		return this.root.getByRole('button', { name: 'Search messages' });
+	}
+
+	get btnDisableE2EEncryption(): Locator {
+		return this.root.getByRole('button', { name: 'Disable E2E encryption' });
+	}
+
+	get menuItemExportMessages(): Locator {
+		return this.menu.getMenuItem('Export messages');
+	}
+
+	get menuItemMentions(): Locator {
+		return this.menu.getMenuItem('Mentions');
+	}
+
+	get menuItemStarredMessages(): Locator {
+		return this.menu.getMenuItem('Starred messages');
+	}
+
+	get menuItemPinnedMessages(): Locator {
+		return this.menu.getMenuItem('Pinned messages');
+	}
+
+	get menuItemPruneMessages(): Locator {
+		return this.menu.getMenuItem('Prune messages');
+	}
+
+	get menuItemAutoTranslate(): Locator {
+		return this.menu.getMenuItem('Auto-Translate');
+	}
+
+	get menuItemNotificationsPreferences(): Locator {
+		return this.menu.getMenuItem('Notifications preferences');
+	}
+
+	get menuItemDisableE2EEncryption(): Locator {
+		return this.menu.getMenuItem('Disable E2E encryption');
+	}
+
+	get menuItemEnableE2EEncryption(): Locator {
+		return this.menu.getMenuItem('Enable E2E encryption');
+	}
+
+	get menuItemFiles(): Locator {
+		return this.menu.getMenuItem('Files');
+	}
+
+	/** The room's conference-call history. */
+	get menuItemCalls(): Locator {
+		return this.menu.getMenuItem('Calls');
+	}
+
+	get btnCalls(): Locator {
+		return this.root.getByRole('button', { name: 'Calls', exact: true });
+	}
+
+	/**
+	 * Opens the room's call history, wherever the toolbar happens to be keeping it: the action is ordered last,
+	 * so it is normally behind *Options*, but a room with few actions shows it outright.
+	 */
+	async openCalls(): Promise<void> {
+		if (await this.btnCalls.isVisible()) {
+			await this.btnCalls.click();
+			return;
+		}
+
+		await this.openMoreOptions();
+		await this.menuItemCalls.click();
+	}
+
+	get btnABACAttributes(): Locator {
+		return this.root.getByRole('button', { name: 'Attribute-based access control', exact: true });
+	}
+
+	get menuItemABACAttributes(): Locator {
+		return this.menu.getMenuItem('Attribute-based access control');
+	}
+
+	async openABACAttributes(): Promise<void> {
+		if (await this.btnABACAttributes.isVisible()) {
+			await this.btnABACAttributes.click();
+			return;
+		}
+
+		await this.openMoreOptions();
+		await this.menuItemABACAttributes.click();
+	}
+
+	async openRoomInfo() {
+		await this.btnRoomInfo.click();
+	}
+
+	async openMembersTab() {
+		await this.btnMembers.click();
+	}
+
+	async openUserInfo() {
+		await this.btnUserInfo.click();
+	}
+
+	async openMoreOptions() {
+		await this.btnMoreOptions.click();
+	}
+
+	private get btnTeamChannels(): Locator {
+		return this.root.getByRole('button', { name: 'Team channels' });
+	}
+
+	async openTeamChannels() {
+		await this.btnTeamChannels.click();
+	}
+
+	async waitFor() {
+		await this.root.waitFor({ state: 'visible' });
+	}
+}
+
+export class TeamToolbar extends RoomToolbar {
+	private get menuItemTeamMembers() {
+		return this.menu.getMenuItem('Teams members');
+	}
+
+	private get btnTeamInfo() {
+		return this.root.getByRole('button', { name: 'Team info' });
+	}
+
+	async openTeamMembers() {
+		await this.menuItemTeamMembers.click();
+	}
+
+	async openTeamInfo() {
+		await this.btnTeamInfo.click();
+	}
+}
+
+export class EncryptedRoomToolbar extends RoomToolbar {}
+
+export class OmnichannelRoomToolbar extends RoomToolbar {
+	private get btnContactInfo(): Locator {
+		return this.root.getByRole('button', { name: 'Contact information' });
+	}
+
+	private get btnCannedResponses(): Locator {
+		return this.root.getByRole('button', { name: 'Canned responses' });
+	}
+
+	async openContactInfo() {
+		await this.btnContactInfo.click();
+	}
+
+	async openCannedResponses() {
+		await this.btnCannedResponses.click();
+	}
+}
+
+export class OmnichannelQuickActionsRoomToolbar extends Toolbar {
+	private closeChatModal: OmnichannelCloseChatModal;
+
+	private onHoldModal: OmnichannelOnHoldModal;
+
+	constructor(page: Page) {
+		super(page.getByRole('toolbar', { name: 'Omnichannel quick actions' }));
+		this.closeChatModal = new OmnichannelCloseChatModal(page);
+		this.onHoldModal = new OmnichannelOnHoldModal(page);
+	}
+
+	get btnOnHold(): Locator {
+		return this.root.getByRole('button', { name: 'Place chat On-Hold' });
+	}
+
+	get btnForwardChat(): Locator {
+		return this.root.getByRole('button', { name: 'Forward chat' });
+	}
+
+	get btnEndConversation(): Locator {
+		return this.root.getByRole('button', { name: 'End conversation' });
+	}
+
+	/**
+	 * FIXME: This `clickCount` seems a hack for a bad implementation
+	 */
+	async placeChatOnHold() {
+		await this.btnOnHold.click({ clickCount: 2 });
+		await this.onHoldModal.confirm();
+	}
+
+	async forwardChat() {
+		await this.btnForwardChat.click();
+	}
+
+	async closeChat({ comment = 'any_comment', downloadPDF = false } = {}): Promise<void> {
+		await this.btnEndConversation.click();
+		await this.closeChatModal.confirm(comment, downloadPDF);
+	}
+}

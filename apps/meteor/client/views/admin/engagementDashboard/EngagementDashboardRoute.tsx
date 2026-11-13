@@ -1,0 +1,92 @@
+import { PageSkeleton, useHasLicenseModule } from '@rocket.chat/ui-client';
+import {
+	usePermission,
+	useRouter,
+	useSetModal,
+	useCurrentModal,
+	useTranslation,
+	useRouteParameter,
+	useEndpoint,
+} from '@rocket.chat/ui-contexts';
+import { useEffect } from 'react';
+
+import EngagementDashboardPage from './EngagementDashboardPage';
+import GenericUpsellModal from '../../../components/GenericUpsellModal';
+import { useUpsellActions } from '../../../components/GenericUpsellModal/hooks';
+import { getURL } from '../../../lib/getURL';
+import NotAuthorizedPage from '../../notAuthorized/NotAuthorizedPage';
+
+const isValidTab = (tab: string | undefined): tab is 'users' | 'messages' | 'channels' =>
+	typeof tab === 'string' && ['users', 'messages', 'channels'].includes(tab);
+
+const EngagementDashboardRoute = () => {
+	const t = useTranslation();
+	const canViewEngagementDashboard = usePermission('view-engagement-dashboard');
+	const setModal = useSetModal();
+	const isModalOpen = !!useCurrentModal();
+
+	const router = useRouter();
+	const tab = useRouteParameter('tab');
+	const eventStats = useEndpoint('POST', '/v1/statistics.telemetry');
+
+	const { isPending, data: hasEngagementDashboard = false } = useHasLicenseModule('engagement-dashboard');
+
+	const { shouldShowUpsell, handleManageSubscription } = useUpsellActions(hasEngagementDashboard);
+
+	useEffect(() => {
+		if (shouldShowUpsell) {
+			setModal(
+				<GenericUpsellModal
+					aria-label={t('Engagement_Dashboard')}
+					title={t('Engagement_Dashboard')}
+					img={getURL('images/engagement.png')}
+					subtitle={t('Analyze_practical_usage')}
+					description={t('Enrich_your_workspace')}
+					onClose={() => setModal(null)}
+					onConfirm={handleManageSubscription}
+					onCancel={() => setModal(null)}
+				/>,
+			);
+		}
+	}, [shouldShowUpsell, setModal, t, handleManageSubscription]);
+
+	useEffect(() => {
+		return router.subscribeToRouteChange(() => {
+			if (!isValidTab(tab)) {
+				router.navigate(
+					{
+						pattern: '/admin/engagement/:tab?',
+						params: { tab: 'users' },
+					},
+					{ replace: true },
+				);
+			}
+		});
+	}, [router, tab]);
+
+	if (isModalOpen || isPending) {
+		return <PageSkeleton />;
+	}
+
+	if (!canViewEngagementDashboard || !hasEngagementDashboard) {
+		return <NotAuthorizedPage />;
+	}
+
+	eventStats({
+		params: [{ eventName: 'updateCounter', settingsId: 'Engagement_Dashboard_Load_Count' }],
+	});
+
+	return (
+		<EngagementDashboardPage
+			tab={tab as 'users' | 'messages' | 'channels'}
+			onSelectTab={(tab) =>
+				router.navigate({
+					pattern: '/admin/engagement/:tab?',
+					params: { tab },
+				})
+			}
+		/>
+	);
+};
+
+export default EngagementDashboardRoute;

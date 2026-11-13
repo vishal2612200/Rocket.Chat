@@ -1,0 +1,51 @@
+import { handleLogin, type LoginCallback } from '../../lib/2fa/overrideLoginMethod';
+import { callLoginMethod, registerLoginWithMethod } from '../accounts';
+
+declare module 'meteor/meteor' {
+	// oxlint-disable-next-line @typescript-eslint/no-namespace
+	namespace Meteor {
+		function loginWithLDAP(
+			username: string | { username: string } | { email: string } | { id: string },
+			ldapPass: string,
+			callback?: LoginCallback,
+		): void;
+	}
+}
+
+const loginWithLDAP = (username: string | { username: string } | { email: string } | { id: string }, ldapPass: string) =>
+	callLoginMethod({
+		methodArguments: [
+			{
+				ldap: true,
+				username,
+				ldapPass,
+				ldapOptions: {},
+			},
+		],
+	});
+
+const loginWithLDAPAndTOTP = (
+	username: string | { username: string } | { email: string } | { id: string },
+	ldapPass: string,
+	code: string,
+) => {
+	const loginRequest = {
+		ldap: true,
+		username,
+		ldapPass,
+		ldapOptions: {},
+	};
+
+	return callLoginMethod({
+		methodArguments: [
+			{
+				totp: {
+					login: loginRequest,
+					code,
+				},
+			},
+		],
+	});
+};
+
+registerLoginWithMethod('loginWithLDAP', handleLogin(loginWithLDAP, loginWithLDAPAndTOTP));

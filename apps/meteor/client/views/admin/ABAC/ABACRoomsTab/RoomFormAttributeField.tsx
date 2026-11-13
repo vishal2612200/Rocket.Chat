@@ -1,0 +1,124 @@
+import type { SelectOption } from '@rocket.chat/fuselage';
+import { Box, Button, FieldError, FieldRow, MultiSelectFiltered, SelectFiltered } from '@rocket.chat/fuselage';
+import { useCallback, useMemo } from 'react';
+import { useController, useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+
+import type { RoomFormData } from './RoomForm';
+
+type ABACAttributeAutocompleteProps = {
+	labelId: string;
+	onRemove: () => void;
+	index: number;
+	attributeList: { value: string; label: string; attributeValues: string[] }[];
+	required?: boolean;
+	disabled?: boolean;
+	lockKey?: boolean;
+	removable?: boolean;
+};
+
+const RoomFormAttributeField = ({
+	labelId,
+	onRemove,
+	index,
+	attributeList,
+	required = false,
+	disabled = false,
+	lockKey = false,
+	removable = true,
+}: ABACAttributeAutocompleteProps) => {
+	const { t } = useTranslation();
+
+	const { control, getValues, resetField } = useFormContext<RoomFormData>();
+
+	const options: SelectOption[] = useMemo(() => attributeList.map((attribute) => [attribute.value, attribute.label]), [attributeList]);
+
+	const validateRepeatedAttributes = useCallback(
+		(value: string) => {
+			const attributes = getValues('attributes');
+			// Only one instance of the same attribute is allowed to be in the form at a time
+			const repeatedAttributes = attributes.filter((attribute) => attribute.key === value).length > 1;
+			return repeatedAttributes ? t('ABAC_No_repeated_attributes') : undefined;
+		},
+		[getValues, t],
+	);
+
+	const { field: keyField, fieldState: keyFieldState } = useController({
+		name: `attributes.${index}.key`,
+		control,
+		rules: {
+			required: t('Required_field', { field: t('Attribute') }),
+			validate: validateRepeatedAttributes,
+		},
+	});
+
+	const { field: valuesField, fieldState: valuesFieldState } = useController({
+		name: `attributes.${index}.values`,
+		control,
+		rules: { required: t('Required_field', { field: t('Attribute_Values') }) },
+	});
+
+	const valueOptions: [string, string][] = useMemo(() => {
+		if (!keyField.value) {
+			return [];
+		}
+
+		const selectedAttributeData = attributeList.find((option) => option.value === keyField.value);
+
+		return selectedAttributeData?.attributeValues.map((value) => [value, value]) || [];
+	}, [attributeList, keyField.value]);
+
+	return (
+		<Box display='flex' flexDirection='column' width='full' gap={8}>
+			<Box display='flex' flexDirection='column'>
+				<FieldRow>
+					<SelectFiltered
+						{...keyField}
+						options={options}
+						aria-required={required}
+						aria-labelledby={labelId}
+						aria-invalid={keyFieldState.error ? 'true' : 'false'}
+						aria-describedby={keyFieldState.error ? `${keyField.name}-error` : undefined}
+						placeholder={t('ABAC_Search_Attribute')}
+						error={keyFieldState.error?.message}
+						disabled={disabled || lockKey}
+						onChange={(value) => {
+							keyField.onChange(value);
+							resetField(`attributes.${index}.values`, { defaultValue: [] });
+						}}
+					/>
+				</FieldRow>
+				{keyFieldState.error && (
+					<FieldError id={`${keyField.name}-error`} role='alert'>
+						{keyFieldState.error.message}
+					</FieldError>
+				)}
+				<FieldRow>
+					<MultiSelectFiltered
+						aria-required={required}
+						aria-labelledby={labelId}
+						aria-invalid={valuesFieldState.error ? 'true' : 'false'}
+						aria-describedby={valuesFieldState.error ? `${valuesField.name}-error` : undefined}
+						{...valuesField}
+						options={valueOptions}
+						placeholder={t('ABAC_Select_Attribute_Values')}
+						error={valuesFieldState.error?.message}
+						disabled={disabled}
+					/>
+				</FieldRow>
+				{valuesFieldState.error && (
+					<FieldError id={`${valuesField.name}-error`} role='alert'>
+						{valuesFieldState.error.message}
+					</FieldError>
+				)}
+			</Box>
+			{index !== 0 && removable && (
+				<Button onClick={onRemove} title={t('Remove')} disabled={disabled}>
+					{t('Remove')}
+				</Button>
+			)}
+		</Box>
+	);
+};
+
+export default RoomFormAttributeField;

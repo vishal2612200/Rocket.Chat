@@ -1,0 +1,67 @@
+import type { ILogItem } from '@rocket.chat/core-typings';
+import { Box, Divider } from '@rocket.chat/fuselage';
+import { useFormatDateAndTime } from '@rocket.chat/ui-client';
+import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import AppLogsItemEntry from './AppLogsItemEntry';
+import { AppsLogItemField } from './AppLogsItemField';
+import { CollapseButton } from './Components/CollapseButton';
+import { CollapsibleRegion } from './Components/CollapsibleRegion';
+
+export type AppLogsItemProps = {
+	regionId: string;
+	expanded: boolean;
+	onExpand: ({ id }: { id: string; expanded: boolean }) => void;
+} & ILogItem;
+
+const AppLogsItem = ({ regionId, expanded, onExpand, ...props }: AppLogsItemProps) => {
+	const { t } = useTranslation();
+	const title = (
+		<>
+			{props.entries.map(({ severity, timestamp, caller, args }, index) => {
+				const parsedArgs = args.map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg))).join(' ');
+				return (
+					<Box
+						lineHeight={20}
+						marginBlockEnd={4}
+						fontFamily='mono'
+						key={`${index}-${severity}-${timestamp}-${caller}`}
+					>{`${timestamp} ${severity} ${caller} ${parsedArgs}`}</Box>
+				);
+			})}
+		</>
+	);
+
+	const handleClick = () => {
+		onExpand({ id: regionId, expanded: !expanded });
+	};
+
+	const anchorRef = useRef<HTMLDivElement>(null);
+
+	const formatDateAndTime = useFormatDateAndTime();
+
+	return (
+		<>
+			<CollapseButton regionId={regionId} expanded={expanded} onClick={handleClick}>
+				<Box ref={anchorRef}>{title}</Box>
+			</CollapseButton>
+
+			<CollapsibleRegion expanded={expanded} id={regionId} paddingBlockStart={expanded ? 'x16' : '0px'} marginInlineStart='x32'>
+				{props.instanceId && <AppsLogItemField marginBlockStart={0} field={props.instanceId} label={t('Instance')} />}
+				{props.totalTime !== undefined && <AppsLogItemField field={`${props.totalTime}ms`} label={t('Total_time')} />}
+				{props.startTime && <AppsLogItemField field={formatDateAndTime(Date.parse(props.startTime))} label={t('Time')} />}
+				{props.method && <AppsLogItemField field={props.method} label={t('Event')} />}
+				<Box marginBlockStart={16} display='flex' color='default' flexDirection='column'>
+					<Box fontWeight={700}>{t('Full_log')}</Box>
+				</Box>
+				<AppLogsItemEntry fullLog={props} />
+			</CollapsibleRegion>
+			<Box is='dt'>
+				<Divider flush />
+			</Box>
+		</>
+	);
+};
+
+export default AppLogsItem;

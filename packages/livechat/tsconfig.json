@@ -1,0 +1,21 @@
+{
+	"extends": "@rocket.chat/tsconfig/client.json",
+	"compilerOptions": {
+		"module": "preserve",
+		"types": ["node", "jest", "vite/client"],
+		"outDir": "./dist",
+		"allowJs": true,
+		"checkJs": false,
+		"jsxImportSource": "preact",
+		"paths": {
+			"react": ["../../node_modules/preact/compat/"],
+			"react/jsx-runtime": ["../../node_modules/preact/jsx-runtime"],
+			"react-dom": ["../../node_modules/preact/compat/"],
+			"react-dom/*": ["../../node_modules/preact/compat/*"]
+		},
+		"declaration": false,
+		"declarationMap": false
+	},
+	"include": ["./src", "./vite.config.mts", "./vite.widget.config.mts", ".storybook/**/*.ts"],
+	"exclude": ["./node_modules", "./dist"]
+}

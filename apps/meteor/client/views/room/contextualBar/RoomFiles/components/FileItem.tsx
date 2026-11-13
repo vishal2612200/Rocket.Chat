@@ -1,0 +1,85 @@
+import type { IRoom, IUpload, IUploadWithUser } from '@rocket.chat/core-typings';
+import {
+	Icon,
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemDescription,
+	ItemLink,
+	ItemMedia,
+	ItemMeta,
+	ItemRow,
+	ItemTitle,
+} from '@rocket.chat/fuselage';
+import { useFormatDateAndTime } from '@rocket.chat/ui-client';
+import { useTranslation } from 'react-i18next';
+
+import FileItemMenu from './FileItemMenu';
+import ImageItem from './ImageItem';
+import { getFileExtension } from '../../../../../../lib/utils/getFileExtension';
+import { normalizeUsername } from '../../../../../../lib/utils/normalizeUsername';
+import { useDownloadFromServiceWorker } from '../../../../../hooks/useDownloadFromServiceWorker';
+import { isPreviewableImage } from '../../../../../lib/utils/isPreviewableImage';
+
+export type FileItemProps = {
+	rid: IRoom['_id'];
+	fileData: IUploadWithUser;
+	onClickDelete: (id: IUpload['_id']) => void;
+};
+
+const FileItem = ({ rid, fileData, onClickDelete }: FileItemProps) => {
+	const { t } = useTranslation();
+	const format = useFormatDateAndTime();
+	const { _id, path, name, uploadedAt, type, typeGroup, user, description } = fileData;
+
+	const { onClick, onContextMenu } = useDownloadFromServiceWorker(path || '', name);
+	const normalizedUsername = user?.username ? normalizeUsername(user.username) : undefined;
+	const shouldDisplayPreview = typeGroup === 'image' && !!type && isPreviewableImage(type);
+	const isEncrypted = !!path?.includes('/file-decrypt/');
+	const extension = getFileExtension(name);
+	const displayName = name || t('Unnamed');
+
+	return (
+		<Item inset='lg'>
+			{shouldDisplayPreview ? (
+				<ImageItem id={_id} url={path} name={displayName} username={normalizedUsername} timestamp={format(uploadedAt)} alt={description} />
+			) : (
+				<>
+					<ItemMedia>
+						<Icon name='attachment-file' size='x32' />
+					</ItemMedia>
+					<ItemContent>
+						<ItemRow>
+							<ItemTitle>
+								{path ? (
+									<ItemLink
+										href={path}
+										download
+										rel='noopener noreferrer'
+										target='_blank'
+										title={displayName}
+										{...(isEncrypted && { onClick, onContextMenu })}
+									>
+										{displayName}
+									</ItemLink>
+								) : (
+									displayName
+								)}
+							</ItemTitle>
+							<ItemMeta>{format(uploadedAt)}</ItemMeta>
+						</ItemRow>
+						<ItemRow>
+							{normalizedUsername && <ItemDescription>@{normalizedUsername}</ItemDescription>}
+							{extension && <ItemMeta>{extension.toUpperCase()}</ItemMeta>}
+						</ItemRow>
+					</ItemContent>
+				</>
+			)}
+			<ItemActions reveal='hover'>
+				<FileItemMenu rid={rid} fileData={fileData} onClickDelete={onClickDelete} />
+			</ItemActions>
+		</Item>
+	);
+};
+
+export default FileItem;

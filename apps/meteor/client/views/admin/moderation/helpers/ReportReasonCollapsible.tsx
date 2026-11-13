@@ -1,0 +1,26 @@
+import { Box, Button } from '@rocket.chat/fuselage';
+import { useToggle } from '@rocket.chat/fuselage-hooks';
+import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+
+export type ReportReasonCollapsibleProps = { children: ReactNode };
+
+const ReportReasonCollapsible = ({ children }: ReportReasonCollapsibleProps) => {
+	const [isOpen, setIsOpen] = useToggle(false);
+	const { t } = useTranslation();
+
+	const toggle = () => setIsOpen((prev) => !prev);
+
+	return (
+		<>
+			<Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+				<Button size='small' onClick={toggle} aria-expanded={isOpen} aria-controls='report-reasons'>
+					{isOpen ? t('Moderation_Hide_reports') : t('Moderation_Show_reports')}
+				</Button>
+			</Box>
+			{isOpen && children}
+		</>
+	);
+};
+
+export default ReportReasonCollapsible;

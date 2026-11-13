@@ -1,0 +1,37 @@
+import type { Ref, JSX as JSXInternal } from 'preact';
+import type { TargetedEvent } from 'preact/compat';
+
+import styles from './styles.module.scss';
+import { createClassName } from '../../../helpers/createClassName';
+
+export type TextInputProps = {
+	name?: string;
+	value?: string;
+	placeholder?: string;
+	disabled?: boolean;
+	small?: boolean;
+	error?: boolean;
+	onChange?: JSXInternal.EventHandler<TargetedEvent<HTMLInputElement, Event>>;
+	onInput?: JSXInternal.EventHandler<TargetedEvent<HTMLInputElement, Event>>;
+	onBlur?: JSXInternal.EventHandler<TargetedEvent<HTMLInputElement, Event>>;
+	className?: string;
+	style?: JSXInternal.CSSProperties;
+	ref?: Ref<HTMLInputElement>;
+};
+
+const TextInput = ({ name, value, placeholder, disabled, small, error, onChange, onInput, className, style = {}, ref }: TextInputProps) => (
+	<input
+		type='text'
+		name={name}
+		value={value}
+		placeholder={placeholder}
+		disabled={disabled}
+		onChange={onChange}
+		onInput={onInput}
+		className={createClassName(styles, 'text-input', { disabled, error, small }, [className])}
+		ref={ref}
+		style={style}
+	/>
+);
+
+export { TextInput };

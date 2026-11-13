@@ -1,0 +1,357 @@
+import { mockAppRoot } from '@rocket.chat/mock-providers';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+import CreateTeamModal from './CreateTeamModal';
+import CreateTeamModalWithData from './CreateTeamModalWithData';
+import { mockAbacRoomCreationRoot } from '../../../../tests/mocks/client/mockAbacRoomCreationRoot';
+
+jest.mock('../../../lib/rooms/roomCoordinator', () => ({}));
+
+const selectAttributeValue = async (value: string) => {
+	const comboboxes = screen.getAllByRole('combobox');
+	await userEvent.click(comboboxes[comboboxes.length - 1]);
+
+	const listboxes = await screen.findAllByRole('listbox', { hidden: true });
+	const option = listboxes.map((element) => within(element).queryByText(value)).find(Boolean);
+	if (!option) {
+		throw new Error(`Could not find the option ${value}`);
+	}
+
+	await userEvent.click(option);
+};
+
+describe('CreateTeamModal', () => {
+	describe('ABAC', () => {
+		it('should keep the single-page modal when ABAC is disabled', () => {
+			render(<CreateTeamModalWithData onClose={() => null} />, { wrapper: mockAppRoot().build() });
+
+			expect(screen.queryByLabelText('ABAC_Managed')).not.toBeInTheDocument();
+			expect(screen.getByText('Advanced_settings')).toBeInTheDocument();
+		});
+
+		it('should take two steps for a team that is not ABAC-managed', async () => {
+			render(<CreateTeamModalWithData onClose={() => null} />, { wrapper: mockAbacRoomCreationRoot() });
+
+			expect(await screen.findByLabelText('ABAC_Managed')).not.toBeChecked();
+			expect(screen.getByText('Step 1 of 2')).toBeInTheDocument();
+		});
+
+		it('should walk the same four steps as a channel and create the team with its attributes', async () => {
+			const createTeam = jest.fn(() => ({ team: { roomId: 'team-room' } }));
+			render(<CreateTeamModalWithData onClose={() => null} />, {
+				wrapper: mockAbacRoomCreationRoot({ requiredAttributes: ['dept'], createTeam }),
+			});
+
+			await userEvent.click(await screen.findByLabelText('ABAC_Managed'));
+			expect(screen.getByText('Step 1 of 4')).toBeInTheDocument();
+			expect(screen.getByLabelText('Teams_New_Private_Label')).toBeChecked();
+			expect(screen.getByLabelText('Teams_New_Private_Label')).toBeDisabled();
+
+			await userEvent.type(screen.getByRole('textbox', { name: 'Teams_New_Name_Label' }), 'restricted');
+			await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+			expect(await screen.findByText('ABAC_Room_Attributes')).toBeInTheDocument();
+			expect(screen.getByText('Step 2 of 4')).toBeInTheDocument();
+
+			await selectAttributeValue('eng');
+			await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+			expect(await screen.findByText('Step 3 of 4')).toBeInTheDocument();
+
+			await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+			expect(await screen.findByText('Step 4 of 4')).toBeInTheDocument();
+
+			const create = await screen.findByRole('button', { name: 'Create' });
+			await waitFor(() => expect(create).toBeEnabled());
+			await userEvent.click(create);
+
+			await waitFor(() =>
+				expect(createTeam).toHaveBeenCalledWith(
+					expect.objectContaining({ name: 'restricted', type: 1, abacAttributes: { dept: ['eng'] } }),
+				),
+			);
+		});
+
+		it('should lock ABAC-managed on under enforcement', async () => {
+			render(<CreateTeamModalWithData onClose={() => null} />, { wrapper: mockAbacRoomCreationRoot({ enforced: true }) });
+
+			const managed = await screen.findByLabelText('ABAC_Managed');
+			expect(managed).toBeChecked();
+			expect(managed).toBeDisabled();
+		});
+
+		it('should stop a creator who cannot create an ABAC-managed team under enforcement', async () => {
+			render(<CreateTeamModalWithData onClose={() => null} />, {
+				wrapper: mockAbacRoomCreationRoot({ enforced: true, permissions: ['create-c', 'create-p', 'create-team'] }),
+			});
+
+			expect(await screen.findByText('ABAC_Room_Creation_Not_Allowed')).toBeInTheDocument();
+			expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+			expect(screen.getByText('Step 1 of 2')).toBeInTheDocument();
+		});
+	});
+
+	it('should render with encryption option disabled and set to off when E2E_Enable=false and E2E_Enabled_Default_PrivateRooms=false', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withSetting('E2E_Enable', false).withSetting('E2E_Enabled_Default_PrivateRooms', false).build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const encrypted = screen.getByLabelText('Teams_New_Encrypted_Label') as HTMLInputElement;
+		expect(encrypted).toBeInTheDocument();
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeDisabled();
+	});
+
+	it('should render with encryption option enabled and set to off when E2E_Enable=true and E2E_Enabled_Default_PrivateRooms=false', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withSetting('E2E_Enable', true).withSetting('E2E_Enabled_Default_PrivateRooms', false).build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const encrypted = screen.getByLabelText('Teams_New_Encrypted_Label') as HTMLInputElement;
+		expect(encrypted).toBeInTheDocument();
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeEnabled();
+	});
+
+	it('should render with encryption option disabled and set to off when E2E_Enable=false and E2E_Enabled_Default_PrivateRooms=true', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withSetting('E2E_Enable', false).withSetting('E2E_Enabled_Default_PrivateRooms', true).build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const encrypted = screen.getByLabelText('Teams_New_Encrypted_Label') as HTMLInputElement;
+		expect(encrypted).toBeInTheDocument();
+
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeDisabled();
+	});
+
+	it('should render with encryption option enabled and set to on when E2E_Enable=true and E2E_Enabled_Default_PrivateRooms=True', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withSetting('E2E_Enable', true).withSetting('E2E_Enabled_Default_PrivateRooms', true).build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const encrypted = screen.getByLabelText('Teams_New_Encrypted_Label') as HTMLInputElement;
+		expect(encrypted).toBeChecked();
+		expect(encrypted).toBeEnabled();
+	});
+
+	it('when Private goes ON → OFF: forces Encrypted OFF and disables it (E2E_Enable=true, E2E_Enabled_Default_PrivateRooms=true)', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withSetting('E2E_Enable', true).withSetting('E2E_Enabled_Default_PrivateRooms', true).build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const encrypted = screen.getByLabelText('Teams_New_Encrypted_Label') as HTMLInputElement;
+		const priv = screen.getByLabelText('Teams_New_Private_Label') as HTMLInputElement;
+
+		// initial: private=true, encrypted ON and enabled
+		expect(priv).toBeChecked();
+		expect(encrypted).toBeChecked();
+		expect(encrypted).toBeEnabled();
+
+		// Private ON -> OFF: encrypted must become OFF and disabled
+		await userEvent.click(priv);
+		expect(priv).not.toBeChecked();
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeDisabled();
+	});
+
+	it('when Private goes OFF → ON: keeps Encrypted OFF but re-enables it (E2E_Enable=true, E2E_Enabled_Default_PrivateRooms=true)', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withSetting('E2E_Enable', true).withSetting('E2E_Enabled_Default_PrivateRooms', true).build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const encrypted = screen.getByLabelText('Teams_New_Encrypted_Label') as HTMLInputElement;
+		const priv = screen.getByLabelText('Teams_New_Private_Label') as HTMLInputElement;
+
+		// turn private OFF to simulate user path from non-private
+		await userEvent.click(priv);
+		expect(priv).not.toBeChecked();
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeDisabled();
+
+		// turn private back ON -> encrypted should remain OFF but become enabled
+		await userEvent.click(priv);
+		expect(priv).toBeChecked();
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeEnabled();
+	});
+
+	it('private team: toggling Broadcast on/off does not change or disable Encrypted', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withSetting('E2E_Enable', true).withSetting('E2E_Enabled_Default_PrivateRooms', true).build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const encrypted = screen.getByLabelText('Teams_New_Encrypted_Label') as HTMLInputElement;
+		const broadcast = screen.getByLabelText('Teams_New_Broadcast_Label') as HTMLInputElement;
+		const priv = screen.getByLabelText('Teams_New_Private_Label') as HTMLInputElement;
+
+		expect(priv).toBeChecked();
+		expect(encrypted).toBeChecked();
+		expect(encrypted).toBeEnabled();
+		expect(broadcast).not.toBeChecked();
+
+		// Broadcast: OFF -> ON (Encrypted unchanged + enabled)
+		await userEvent.click(broadcast);
+		expect(broadcast).toBeChecked();
+		expect(encrypted).toBeChecked();
+		expect(encrypted).toBeEnabled();
+
+		// Broadcast: ON -> OFF (Encrypted unchanged + enabled)
+		await userEvent.click(broadcast);
+		expect(broadcast).not.toBeChecked();
+		expect(encrypted).toBeChecked();
+		expect(encrypted).toBeEnabled();
+
+		// User can still toggle Encrypted freely while Broadcast is OFF
+		await userEvent.click(encrypted);
+		expect(encrypted).not.toBeChecked();
+
+		// User can still toggle Encrypted freely while Broadcast is ON
+		await userEvent.click(broadcast);
+		expect(broadcast).toBeChecked();
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeEnabled();
+	});
+
+	it('non-private team: Encrypted remains OFF and disabled regardless of Broadcast state', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withSetting('E2E_Enable', true).withSetting('E2E_Enabled_Default_PrivateRooms', true).build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const encrypted = screen.getByLabelText('Teams_New_Encrypted_Label') as HTMLInputElement;
+		const broadcast = screen.getByLabelText('Teams_New_Broadcast_Label') as HTMLInputElement;
+		const priv = screen.getByLabelText('Teams_New_Private_Label') as HTMLInputElement;
+
+		// Switch to non-private
+		await userEvent.click(priv);
+		expect(priv).not.toBeChecked();
+
+		// Encrypted must be OFF + disabled (non-private cannot be encrypted)
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeDisabled();
+
+		// Broadcast: OFF -> ON (Encrypted stays OFF + disabled)
+		await userEvent.click(broadcast);
+		expect(broadcast).toBeChecked();
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeDisabled();
+
+		// Broadcast: ON -> OFF (Encrypted still OFF + disabled)
+		await userEvent.click(broadcast);
+		expect(broadcast).not.toBeChecked();
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeDisabled();
+	});
+
+	it('should render a private team with encryption checked and disabled for changes when private room encryption is forced', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withSetting('E2E_Enable', true).withSetting('E2E_Force_Encryption_For_Private_Rooms', true).build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const encrypted = screen.getByLabelText('Teams_New_Encrypted_Label') as HTMLInputElement;
+		const priv = screen.getByLabelText('Teams_New_Private_Label') as HTMLInputElement;
+
+		// private by default: encrypted is forced ON and cannot be changed
+		expect(priv).toBeChecked();
+		expect(encrypted).toBeChecked();
+		expect(encrypted).toBeDisabled();
+
+		// Private ON -> OFF: encrypted turns OFF and stays disabled (public teams cannot be encrypted)
+		await userEvent.click(priv);
+		expect(priv).not.toBeChecked();
+		expect(encrypted).not.toBeChecked();
+		expect(encrypted).toBeDisabled();
+
+		// Private OFF -> ON: encryption is forced back ON and remains disabled
+		await userEvent.click(priv);
+		expect(priv).toBeChecked();
+		expect(encrypted).toBeChecked();
+		expect(encrypted).toBeDisabled();
+	});
+
+	it('should disable and turn on ReadOnly toggle when Broadcast is ON and no set-readonly permission', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const broadcast = screen.getByLabelText('Teams_New_Broadcast_Label') as HTMLInputElement;
+		const readOnly = screen.getByLabelText('Teams_New_Read_only_Label') as HTMLInputElement;
+
+		expect(readOnly).not.toBeChecked();
+
+		// Broadcast: OFF -> ON (ReadOnly stays ON + disabled)
+		await userEvent.click(broadcast);
+		expect(broadcast).toBeChecked();
+		expect(readOnly).toBeChecked();
+		expect(readOnly).toBeDisabled();
+	});
+
+	it('should disable and turn on ReadOnly toggle when Broadcast is ON with set-readonly permission', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withPermission('set-readonly').build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const broadcast = screen.getByLabelText('Teams_New_Broadcast_Label') as HTMLInputElement;
+		const readOnly = screen.getByLabelText('Teams_New_Read_only_Label') as HTMLInputElement;
+
+		expect(readOnly).not.toBeChecked();
+
+		// Broadcast: OFF -> ON (ReadOnly stays ON + disabled)
+		await userEvent.click(broadcast);
+		expect(broadcast).toBeChecked();
+		expect(readOnly).toBeChecked();
+		expect(readOnly).toBeDisabled();
+	});
+
+	it('should disable and turn off ReadOnly toggle when Broadcast is OFF with no set-readonly permission', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const broadcast = screen.getByLabelText('Teams_New_Broadcast_Label') as HTMLInputElement;
+		const readOnly = screen.getByLabelText('Teams_New_Read_only_Label') as HTMLInputElement;
+
+		expect(broadcast).not.toBeChecked();
+		expect(readOnly).not.toBeChecked();
+		expect(readOnly).toBeDisabled();
+	});
+
+	it('should enable ReadOnly toggle when Broadcast is OFF with set-readonly permission', async () => {
+		render(<CreateTeamModal onClose={() => null} />, {
+			wrapper: mockAppRoot().withPermission('set-readonly').build(),
+		});
+
+		await userEvent.click(screen.getByText('Advanced_settings'));
+
+		const broadcast = screen.getByLabelText('Teams_New_Broadcast_Label') as HTMLInputElement;
+		const readOnly = screen.getByLabelText('Teams_New_Read_only_Label') as HTMLInputElement;
+
+		expect(broadcast).not.toBeChecked();
+		expect(readOnly).not.toBeChecked();
+		expect(readOnly).toBeEnabled();
+	});
+});

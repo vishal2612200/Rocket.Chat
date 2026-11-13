@@ -1,0 +1,18 @@
+import type { PaginatedRequest } from '../../helpers/PaginatedRequest';
+import { ajvQuery } from '../Ajv';
+import { paginationQueryProperties } from '../pagination';
+
+export type IntegrationsHistoryProps = PaginatedRequest<{ id: string }>;
+
+const integrationsHistorySchema = {
+	type: 'object',
+	properties: {
+		id: { type: 'string', nullable: false, minLength: 1 },
+		...paginationQueryProperties,
+		sort: { type: 'string', nullable: true },
+	},
+	required: ['id'],
+	additionalProperties: false,
+};
+
+export const isIntegrationsHistoryProps = ajvQuery.compile<IntegrationsHistoryProps>(integrationsHistorySchema);

@@ -1,0 +1,322 @@
+import { after, before, describe, it } from 'node:test';
+
+import { expect } from 'chai';
+import type { Response } from 'supertest';
+
+import { getCredentials, api, request, credentials } from '../../data/api-data';
+import { updatePermission } from '../../data/permissions.helper';
+
+describe('[Cloud]', () => {
+	before((_t, done) => getCredentials(done));
+
+	describe('[/cloud.manualRegister]', () => {
+		before(async () => {
+			return updatePermission('register-on-cloud', ['admin']);
+		});
+
+		after(async () => {
+			return updatePermission('register-on-cloud', ['admin']);
+		});
+
+		it('should fail if user is not authenticated', async () => {
+			await request
+				.post(api('cloud.manualRegister'))
+				.expect('Content-Type', 'application/json')
+				.send({
+					cloudBlob: 'test-blob',
+				})
+				.expect(401)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('error', 'You must be logged in to do this.');
+				});
+		});
+
+		it('should fail when cloudBlob property is not provided', async () => {
+			await request
+				.post(api('cloud.manualRegister'))
+				.set(credentials)
+				.expect('Content-Type', 'application/json')
+				.expect(400)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('errorType', 'error-invalid-params');
+					expect(res.body).to.have.property('error', "must have required property 'cloudBlob'");
+				});
+		});
+
+		it('should fail when user does not have the register-on-cloud permission', async () => {
+			await updatePermission('register-on-cloud', []);
+			await request
+				.post(api('cloud.manualRegister'))
+				.set(credentials)
+				.send({
+					cloudBlob: 'test-blob',
+				})
+				.expect('Content-Type', 'application/json')
+				.expect(403)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('errorType', 'error-forbidden');
+				});
+		});
+	});
+
+	describe('[/cloud.createRegistrationIntent]', () => {
+		before(async () => {
+			return updatePermission('manage-cloud', ['admin']);
+		});
+
+		after(async () => {
+			return updatePermission('manage-cloud', ['admin']);
+		});
+
+		it('should fail if user is not authenticated', async () => {
+			await request
+				.post(api('cloud.createRegistrationIntent'))
+				.expect('Content-Type', 'application/json')
+				.send({
+					email: 'test-mail@example.com',
+					resend: true,
+				})
+				.expect(401)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('error', 'You must be logged in to do this.');
+				});
+		});
+
+		it('should fail when resend property is not provided', async () => {
+			await request
+				.post(api('cloud.createRegistrationIntent'))
+				.set(credentials)
+				.send({
+					email: 'test-mail@example.com',
+				})
+				.expect('Content-Type', 'application/json')
+				.expect(400)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('errorType', 'error-invalid-params');
+					expect(res.body).to.have.property('error', "must have required property 'resend'");
+				});
+		});
+
+		it('should fail when email property is not provided', async () => {
+			await request
+				.post(api('cloud.createRegistrationIntent'))
+				.set(credentials)
+				.send({
+					resend: true,
+				})
+				.expect('Content-Type', 'application/json')
+				.expect(400)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('errorType', 'error-invalid-params');
+					expect(res.body).to.have.property('error', "must have required property 'email'");
+				});
+		});
+
+		it('should fail when user does not have the manage-cloud permission', async () => {
+			await updatePermission('manage-cloud', []);
+			await request
+				.post(api('cloud.createRegistrationIntent'))
+				.set(credentials)
+				.send({
+					email: 'test-mail@example.com',
+					resend: true,
+				})
+				.expect('Content-Type', 'application/json')
+				.expect(403)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('errorType', 'error-forbidden');
+				});
+		});
+	});
+
+	describe('[/cloud.confirmationPoll]', () => {
+		before(async () => {
+			return updatePermission('manage-cloud', ['admin']);
+		});
+
+		after(async () => {
+			return updatePermission('manage-cloud', ['admin']);
+		});
+
+		it('should fail if user is not authenticated', async () => {
+			await request
+				.get(api('cloud.confirmationPoll'))
+				.query({
+					deviceCode: 'test-code',
+				})
+				.expect('Content-Type', 'application/json')
+				.expect(401)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('error', 'You must be logged in to do this.');
+				});
+		});
+
+		it('should fail when deviceCode property is not provided', async () => {
+			await request
+				.get(api('cloud.confirmationPoll'))
+				.set(credentials)
+				.expect('Content-Type', 'application/json')
+				.expect(400)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('errorType', 'error-invalid-params');
+					expect(res.body).to.have.property('error', "must have required property 'deviceCode'");
+				});
+		});
+
+		it('should fail when user does not have the manage-cloud permission', async () => {
+			await updatePermission('manage-cloud', []);
+			await request
+				.get(api('cloud.confirmationPoll'))
+				.set(credentials)
+				.query({
+					deviceCode: 'test-code',
+				})
+				.expect('Content-Type', 'application/json')
+				.expect(403)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('errorType', 'error-forbidden');
+				});
+		});
+	});
+
+	describe('[/cloud.registrationStatus]', () => {
+		before(async () => {
+			return updatePermission('manage-cloud', ['admin']);
+		});
+
+		after(async () => {
+			return updatePermission('manage-cloud', ['admin']);
+		});
+
+		it('should fail if user is not authenticated', async () => {
+			await request
+				.get(api('cloud.registrationStatus'))
+				.expect('Content-Type', 'application/json')
+				.expect(401)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('error', 'You must be logged in to do this.');
+				});
+		});
+
+		it('should fail when user does not have the manage-cloud permission', async () => {
+			await updatePermission('manage-cloud', []);
+			await request
+				.get(api('cloud.registrationStatus'))
+				.set(credentials)
+				.expect('Content-Type', 'application/json')
+				.expect(403)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+				});
+		});
+
+		it('should return registration status when user has the manage-cloud permission', async () => {
+			await updatePermission('manage-cloud', ['admin']);
+			await request
+				.get(api('cloud.registrationStatus'))
+				.set(credentials)
+				.expect('Content-Type', 'application/json')
+				.expect(200)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body).to.have.property('registrationStatus');
+				});
+		});
+	});
+
+	describe('[/cloud.workspaceRegisterData]', () => {
+		before(async () => {
+			return updatePermission('manage-cloud', ['admin']);
+		});
+
+		after(async () => {
+			return updatePermission('manage-cloud', ['admin']);
+		});
+
+		it('should fail if user is not authenticated', async () => {
+			await request
+				.get(api('cloud.workspaceRegisterData'))
+				.expect('Content-Type', 'application/json')
+				.expect(401)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('error', 'You must be logged in to do this.');
+				});
+		});
+
+		it('should fail when user does not have the manage-cloud permission', async () => {
+			await updatePermission('manage-cloud', []);
+			await request
+				.get(api('cloud.workspaceRegisterData'))
+				.set(credentials)
+				.expect('Content-Type', 'application/json')
+				.expect(403)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+				});
+		});
+
+		it('should return a base64 encoded registration payload when user has the manage-cloud permission', async () => {
+			await updatePermission('manage-cloud', ['admin']);
+			await request
+				.get(api('cloud.workspaceRegisterData'))
+				.set(credentials)
+				.expect('Content-Type', 'application/json')
+				.expect(200)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', true);
+					expect(res.body).to.have.property('registerData').that.is.a('string');
+
+					const decoded = JSON.parse(Buffer.from(res.body.registerData, 'base64').toString());
+					expect(decoded).to.have.property('uniqueId');
+					expect(decoded).to.have.property('workspaceId');
+				});
+		});
+	});
+
+	describe('[/cloud.connectWorkspace]', () => {
+		before(async () => {
+			return updatePermission('manage-cloud', ['admin']);
+		});
+
+		after(async () => {
+			return updatePermission('manage-cloud', ['admin']);
+		});
+
+		it('should fail if user is not authenticated', async () => {
+			await request
+				.post(api('cloud.connectWorkspace'))
+				.send({ token: 'invalid-token' })
+				.expect('Content-Type', 'application/json')
+				.expect(401)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+					expect(res.body).to.have.property('error', 'You must be logged in to do this.');
+				});
+		});
+
+		it('should fail when user does not have the manage-cloud permission', async () => {
+			await updatePermission('manage-cloud', []);
+			await request
+				.post(api('cloud.connectWorkspace'))
+				.set(credentials)
+				.send({ token: 'invalid-token' })
+				.expect('Content-Type', 'application/json')
+				.expect(403)
+				.expect((res: Response) => {
+					expect(res.body).to.have.property('success', false);
+				});
+		});
+	});
+});

@@ -1,0 +1,54 @@
+import { Field, FieldHint, FieldLabel, FieldRow, UrlInput } from '@rocket.chat/fuselage';
+import { useAbsoluteUrl } from '@rocket.chat/ui-contexts';
+import type { ChangeEventHandler } from 'react';
+
+import ResetSettingButton from '../ResetSettingButton';
+import type { SettingInputProps } from './types';
+
+export type RelativeUrlSettingInputProps = SettingInputProps;
+
+function RelativeUrlSettingInput({
+	_id,
+	label,
+	value,
+	hint,
+	placeholder,
+	readonly,
+	autocomplete,
+	disabled,
+	required,
+	hasResetButton,
+	onChangeValue,
+	onResetButtonClick,
+}: RelativeUrlSettingInputProps) {
+	const getAbsoluteUrl = useAbsoluteUrl();
+
+	const handleChange: ChangeEventHandler<HTMLInputElement> = (event) => {
+		onChangeValue?.(event.currentTarget.value);
+	};
+
+	return (
+		<Field>
+			<FieldRow>
+				<FieldLabel htmlFor={_id} title={_id} required={required}>
+					{label}
+				</FieldLabel>
+				{hasResetButton && <ResetSettingButton onClick={onResetButtonClick} />}
+			</FieldRow>
+			<FieldRow>
+				<UrlInput
+					id={_id}
+					value={getAbsoluteUrl(value || '')}
+					placeholder={placeholder}
+					disabled={disabled}
+					readOnly={readonly}
+					autoComplete={autocomplete === false ? 'off' : undefined}
+					onChange={handleChange}
+				/>
+			</FieldRow>
+			{hint && <FieldHint>{hint}</FieldHint>}
+		</Field>
+	);
+}
+
+export default RelativeUrlSettingInput;

@@ -1,0 +1,65 @@
+import type { IStats } from '@rocket.chat/core-typings';
+import { Button, Card, CardBody, CardControls } from '@rocket.chat/fuselage';
+import { useStableCallback } from '@rocket.chat/fuselage-hooks';
+import { useHasLicenseModule } from '@rocket.chat/ui-client';
+import { useRouter } from '@rocket.chat/ui-contexts';
+import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useFormatMemorySize } from '../../../../hooks/useFormatMemorySize';
+import WorkspaceCardSection from '../components/WorkspaceCardSection';
+import WorkspaceCardTextSeparator from '../components/WorkspaceCardTextSeparator';
+import WorkspaceCardSections from '../layout/WorkspaceCardSections';
+
+export type UsersUploadsCardProps = {
+	statistics: IStats;
+};
+
+const UsersUploadsCard = ({ statistics }: UsersUploadsCardProps) => {
+	const { t } = useTranslation();
+	const formatMemorySize = useFormatMemorySize();
+
+	const router = useRouter();
+
+	const handleEngagement = useStableCallback(() => {
+		router.navigate('/admin/engagement');
+	});
+
+	const { data: canViewEngagement = false } = useHasLicenseModule('engagement-dashboard');
+
+	return (
+		<Card>
+			<CardBody flexDirection='column'>
+				<WorkspaceCardSections>
+					<WorkspaceCardSection title={t('Users')}>
+						<WorkspaceCardTextSeparator label={t('Online')} status='online' value={statistics.onlineUsers} />
+						<WorkspaceCardTextSeparator label={t('Busy')} status='busy' value={statistics.busyUsers} />
+						<WorkspaceCardTextSeparator label={t('Away')} status='away' value={statistics.awayUsers} />
+						<WorkspaceCardTextSeparator label={t('Offline')} status='offline' value={statistics.offlineUsers} />
+						<WorkspaceCardTextSeparator label={t('Total')} value={statistics.totalUsers} />
+					</WorkspaceCardSection>
+					<WorkspaceCardSection title={t('Types')}>
+						<WorkspaceCardTextSeparator label={t('Users_Connected')} value={statistics.totalConnectedUsers} />
+						<WorkspaceCardTextSeparator label={t('Stats_Active_Users')} value={statistics.activeUsers} />
+						<WorkspaceCardTextSeparator label={t('Stats_Active_Guests')} value={statistics.activeGuests} />
+						<WorkspaceCardTextSeparator label={t('Stats_Non_Active_Users')} value={statistics.nonActiveUsers} />
+						<WorkspaceCardTextSeparator label={t('Stats_App_Users')} value={statistics.appUsers} />
+					</WorkspaceCardSection>
+
+					<WorkspaceCardSection title={t('Uploads')}>
+						<WorkspaceCardTextSeparator label={t('Stats_Total_Uploads')} value={statistics.uploadsTotal} />
+						<WorkspaceCardTextSeparator label={t('Stats_Total_Uploads_Size')} value={formatMemorySize(statistics.uploadsTotalSize)} />
+					</WorkspaceCardSection>
+				</WorkspaceCardSections>
+			</CardBody>
+
+			<CardControls>
+				<Button disabled={!canViewEngagement} size='medium' onClick={handleEngagement}>
+					{t('See_on_Engagement_Dashboard')}
+				</Button>
+			</CardControls>
+		</Card>
+	);
+};
+
+export default memo(UsersUploadsCard);

@@ -1,0 +1,169 @@
+import type { IMessage, IRoom, ISubscription } from '@rocket.chat/core-typings';
+import { Emitter } from '@rocket.chat/emitter';
+
+import { withDebouncing } from '../../../lib/utils/highOrderFunctions';
+import { Messages } from '../../stores';
+import { LegacyRoomManager } from '../LegacyRoomManager';
+import { RoomHistoryManager } from '../RoomHistoryManager';
+import { sdk } from '../SDKClient';
+import { getUserId } from '../user';
+
+export class ReadStateManager extends Emitter {
+	private rid: IRoom['_id'];
+
+	private firstUnreadRecordId?: IMessage['_id'];
+
+	private subscription?: ISubscription;
+
+	public constructor(rid: IRoom['_id']) {
+		super();
+		this.rid = rid;
+	}
+
+	public getRid() {
+		return this.rid;
+	}
+
+	public onUnreadStateChange = (callback: () => void): (() => void) => {
+		return this.on('unread-state-change', callback);
+	};
+
+	public getFirstUnreadRecordId = () => {
+		return this.firstUnreadRecordId;
+	};
+
+	public subscribeToMessages() {
+		return RoomHistoryManager.on('loaded-messages', () => this.updateFirstUnreadRecordId());
+	}
+
+	public updateSubscription(subscription?: ISubscription) {
+		if (!subscription) {
+			return;
+		}
+
+		const firstUpdate = !this.subscription;
+
+		this.subscription = subscription;
+		LegacyRoomManager.setPropertyByRid(this.rid, 'unreadSince', this.subscription.ls);
+
+		const { unread, alert } = this.subscription;
+		if (!unread && !alert) {
+			return;
+		}
+
+		if (firstUpdate) {
+			this.updateFirstUnreadRecordId();
+			return;
+		}
+
+		if (document.hasFocus() && this.firstUnreadRecordId) {
+			return;
+		}
+
+		this.updateFirstUnreadRecordId();
+	}
+
+	private updateFirstUnreadRecordId() {
+		if (!this.subscription?.ls) {
+			return;
+		}
+
+		const firstUnreadRecord = Messages.state.findFirst(
+			(record) =>
+				record.rid === this.subscription?.rid &&
+				record.ts.getTime() > (this.subscription.ls?.getTime() ?? 0) &&
+				record.u._id !== getUserId() &&
+				(!record.tmid || record.tshow === true),
+			(a, b) => a.ts.getTime() - b.ts.getTime(),
+		);
+
+		this.setFirstUnreadRecordId(firstUnreadRecord?._id);
+	}
+
+	private setFirstUnreadRecordId(firstUnreadRecordId: string | undefined) {
+		this.firstUnreadRecordId = firstUnreadRecordId;
+		this.emit('unread-state-change', this.firstUnreadRecordId);
+	}
+
+	public clearUnreadMark() {
+		this.setFirstUnreadRecordId(undefined);
+	}
+
+	public handleWindowEvents = (): (() => void) => {
+		const handleWindowFocus = () => {
+			this.attemptMarkAsRead();
+		};
+
+		const handleWindowKeyUp = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') {
+				this.markAsRead();
+				this.updateFirstUnreadRecordId();
+			}
+		};
+
+		window.addEventListener('focus', handleWindowFocus);
+		window.addEventListener('keyup', handleWindowKeyUp);
+
+		return () => {
+			window.removeEventListener('focus', handleWindowFocus);
+			window.removeEventListener('keyup', handleWindowKeyUp);
+		};
+	};
+
+	private isUnreadMarkVisible: () => boolean = () => false;
+
+	public setIsUnreadMarkVisibleCallback(callback: () => boolean) {
+		this.isUnreadMarkVisible = callback;
+	}
+
+	private hasUserReachedLatestMessage: () => boolean = () => false;
+
+	public setHasUserReachedLatestMessageCallback(callback: () => boolean) {
+		this.hasUserReachedLatestMessage = callback;
+	}
+
+	// This will only mark as read if the unread mark is visible or the user scrolled to the latest message
+	public attemptMarkAsRead() {
+		const { alert, unread } = this.subscription || {};
+		if (!alert && unread === 0) {
+			return;
+		}
+
+		if (!document.hasFocus()) {
+			return;
+		}
+
+		if (this.hasUserReachedLatestMessage()) {
+			return this.markAsRead();
+		}
+
+		if (this.firstUnreadRecordId && this.isUnreadMarkVisible() === false) {
+			return;
+		}
+		// if there are unloaded unread messages, don't mark as read
+		if (RoomHistoryManager.getRoom(this.rid).unreadNotLoaded > 0) {
+			return;
+		}
+
+		return this.markAsRead();
+	}
+
+	public debouncedMarkAsRead = withDebouncing({ wait: 1000 })(() => {
+		try {
+			return this.markAsRead();
+		} catch (e) {
+			console.error(e);
+		}
+	});
+
+	// this will always mark as read.
+	public async markAsRead() {
+		if (!this.rid || !this.subscription?.rid) {
+			return;
+		}
+
+		return sdk.rest.post('/v1/subscriptions.read', { rid: this.rid }).then(() => {
+			RoomHistoryManager.updateRoom(this.rid, { unreadNotLoaded: 0 });
+		});
+	}
+}

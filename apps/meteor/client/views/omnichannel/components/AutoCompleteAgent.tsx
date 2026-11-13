@@ -1,0 +1,58 @@
+import { Box, PaginatedSelectFiltered } from '@rocket.chat/fuselage';
+import { useDebouncedValue } from '@rocket.chat/fuselage-hooks';
+import type { ComponentProps } from 'react';
+import { memo, useState } from 'react';
+
+import { useAgentsList } from '../hooks/useAgentsList';
+
+export type AutoCompleteAgentProps = Omit<
+	ComponentProps<typeof PaginatedSelectFiltered>,
+	'filter' | 'setFilter' | 'options' | 'endReached' | 'renderItem'
+> & {
+	value: string;
+	haveAll?: boolean;
+	haveNoAgentsSelectedOption?: boolean;
+	excludeId?: string;
+	showIdleAgents?: boolean;
+	onlyAvailable?: boolean;
+	onChange: (value: string) => void;
+};
+
+const AutoCompleteAgent = ({
+	value,
+	haveAll = false,
+	haveNoAgentsSelectedOption = false,
+	excludeId,
+	showIdleAgents = true,
+	onlyAvailable = false,
+	onChange,
+	...props
+}: AutoCompleteAgentProps) => {
+	const [agentsFilter, setAgentsFilter] = useState<string>('');
+	const debouncedAgentsFilter = useDebouncedValue(agentsFilter, 500);
+
+	const { data: agentsItems, fetchNextPage } = useAgentsList({
+		filter: debouncedAgentsFilter,
+		onlyAvailable,
+		haveAll,
+		haveNoAgentsSelectedOption,
+		excludeId,
+		showIdleAgents,
+	});
+
+	return (
+		<Box display='flex' flexGrow={1} flexShrink={0}>
+			<PaginatedSelectFiltered
+				{...props}
+				value={value}
+				filter={agentsFilter}
+				setFilter={setAgentsFilter as (value: string | number | undefined) => void}
+				options={agentsItems}
+				onChange={onChange}
+				endReached={() => fetchNextPage()}
+			/>
+		</Box>
+	);
+};
+
+export default memo(AutoCompleteAgent);

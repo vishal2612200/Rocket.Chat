@@ -1,0 +1,252 @@
+import type { Locator, Page } from '@playwright/test';
+
+import {
+	HomeContent,
+	Navbar,
+	Sidepanel,
+	RoomSidebar,
+	ToastMessages,
+	RoomComposer,
+	ThreadComposer,
+	MembersFlexTab,
+	ChannelsFlexTab,
+	NotificationPreferencesFlexTab,
+	AutoTranslateFlexTab,
+	ExportMessagesFlexTab,
+	OngoingCalls,
+	PruneMessagesFlexTab,
+	SearchMessagesFlexTab,
+	RoomInfoFlexTab,
+	ThreadsFlexTab,
+	EditRoomFlexTab,
+	UserInfoFlexTab,
+	FilesFlexTab,
+	ABACAttributesFlexTab,
+	ABACManageAttributesFlexTab,
+} from './fragments';
+import { SidebarRail } from './fragments/siderail';
+import { RoomToolbar } from './fragments/toolbar';
+import { UserCard } from './fragments/user-card';
+import { VoiceCalls } from './fragments/voice-calls';
+import { RoutedPage } from './routed-page';
+
+export class HomeChannel extends RoutedPage {
+	protected readonly route: string = '/home';
+
+	readonly content: HomeContent;
+
+	readonly sidebar: RoomSidebar;
+
+	readonly sidepanel: Sidepanel;
+
+	readonly navbar: Navbar;
+
+	readonly userCard: UserCard;
+
+	readonly ongoingCalls: OngoingCalls;
+
+	private _tabs: {
+		members: MembersFlexTab;
+		userInfo: UserInfoFlexTab;
+		room: RoomInfoFlexTab;
+		editRoom: EditRoomFlexTab;
+		channels: ChannelsFlexTab;
+		notificationPreferences: NotificationPreferencesFlexTab;
+		autoTranslate: AutoTranslateFlexTab;
+		exportMessages: ExportMessagesFlexTab;
+		pruneMessages: PruneMessagesFlexTab;
+		searchMessages: SearchMessagesFlexTab;
+		threads: ThreadsFlexTab;
+		files: FilesFlexTab;
+		abacAttributes: ABACAttributesFlexTab;
+		abacManageAttributes: ABACManageAttributesFlexTab;
+	};
+
+	readonly roomToolbar: RoomToolbar;
+
+	readonly voiceCalls: VoiceCalls;
+
+	readonly toastMessage: ToastMessages;
+
+	readonly composer: RoomComposer;
+
+	readonly threadComposer: ThreadComposer;
+
+	readonly sidebarRail: SidebarRail;
+
+	constructor(page: Page) {
+		super(page);
+		this.content = new HomeContent(page);
+		this.sidebar = new RoomSidebar(page);
+		this.sidepanel = new Sidepanel(page);
+		this.sidebarRail = new SidebarRail(page);
+		this.navbar = new Navbar(page);
+		this.userCard = new UserCard(page);
+		this.ongoingCalls = new OngoingCalls(page);
+		this._tabs = {
+			members: new MembersFlexTab(page),
+			userInfo: new UserInfoFlexTab(page),
+			room: new RoomInfoFlexTab(page.getByRole('dialog', { name: 'Channel info' })),
+			editRoom: new EditRoomFlexTab(page.getByRole('dialog', { name: 'Edit channel' })),
+			channels: new ChannelsFlexTab(page),
+			notificationPreferences: new NotificationPreferencesFlexTab(page),
+			autoTranslate: new AutoTranslateFlexTab(page),
+			exportMessages: new ExportMessagesFlexTab(page),
+			pruneMessages: new PruneMessagesFlexTab(page),
+			searchMessages: new SearchMessagesFlexTab(page),
+			threads: new ThreadsFlexTab(page),
+			files: new FilesFlexTab(page),
+			abacAttributes: new ABACAttributesFlexTab(page),
+			abacManageAttributes: new ABACManageAttributesFlexTab(page),
+		};
+		this.roomToolbar = new RoomToolbar(page);
+		this.voiceCalls = new VoiceCalls(page);
+		this.toastMessage = new ToastMessages(page);
+		this.composer = new RoomComposer(page);
+		this.threadComposer = new ThreadComposer(page);
+	}
+
+	get tabs() {
+		return this._tabs;
+	}
+
+	async waitForReady(): Promise<void> {
+		await this.homepageHeader.waitFor({ state: 'visible' });
+	}
+
+	async gotoChannel(name: string): Promise<void> {
+		await this.navigateTo(`/channel/${name}`, () => this.content.waitForChannel());
+	}
+
+	async gotoGroup(name: string): Promise<void> {
+		await this.navigateTo(`/group/${name}`, () => this.content.waitForChannel());
+	}
+
+	/** Opens a DM by username in the embedded layout, which hides the room header. */
+	async gotoDirectEmbedded(username: string): Promise<void> {
+		await this.navigateTo(`/direct/${username}?layout=embedded`, this.content.mainMessageList);
+	}
+
+	/** Opens a channel scrolled to a message. Pass `isThread` when the message lives in a thread. */
+	async gotoChannelMessage(name: string, messageId: string, isThread = false): Promise<void> {
+		await this.navigateTo(`/channel/${name}?msg=${messageId}`, async () => {
+			await this.content.waitForChannel();
+
+			if (isThread) {
+				await this.content.waitForThread();
+			}
+		});
+	}
+
+	/** Opens a thread by the id of the message that started it. */
+	async gotoChannelThread(name: string, threadMessageId: string): Promise<void> {
+		await this.navigateTo(`/channel/${name}/thread/${threadMessageId}`, async () => {
+			await this.content.waitForChannel();
+			await this.content.waitForThread();
+		});
+	}
+
+	/** Opens a channel with the Prune Messages panel open. */
+	async gotoChannelCleanHistory(name: string): Promise<void> {
+		await this.navigateTo(`/channel/${name}/clean-history`, this.tabs.pruneMessages.root);
+	}
+
+	get btnContextualbarClose(): Locator {
+		return this.page.locator('[data-qa="ContextualbarActionClose"]');
+	}
+
+	getRoomHeaderFavoriteBtn(isEnterprise: boolean): Locator {
+		return isEnterprise ? this.btnCategorySelector : this.roomHeaderFavoriteBtn;
+	}
+
+	private get roomHeaderFavoriteBtn(): Locator {
+		return this.page.getByRole('main').getByRole('button', { name: 'Favorite' });
+	}
+
+	private get btnCategorySelector(): Locator {
+		return this.page.getByRole('main').getByRole('button', { name: 'Move to', exact: true });
+	}
+
+	// TODO: this button should name open room info or something instead of the room name
+	getBtnOpenRoomInfo(roomName: string): Locator {
+		return this.page.getByRole('main').getByRole('button', { name: roomName, exact: true });
+	}
+
+	get roomHeaderToolbar(): Locator {
+		return this.page.locator('[role=toolbar][aria-label="Primary room actions"]');
+	}
+
+	get markUnread(): Locator {
+		return this.page.locator('role=menuitem[name="Mark unread"]');
+	}
+
+	get dialogEnterE2EEPassword(): Locator {
+		return this.page.getByRole('dialog', { name: 'Enter E2EE password' });
+	}
+
+	get dialogSaveE2EEPassword(): Locator {
+		return this.page.getByRole('dialog', { name: 'Save your new E2EE password' });
+	}
+
+	get btnRoomSaveE2EEPassword(): Locator {
+		return this.page.getByRole('main').getByRole('button', { name: 'Save E2EE password' });
+	}
+
+	get btnRoomEnterE2EEPassword(): Locator {
+		return this.page.getByRole('main').getByRole('button', { name: 'Enter your E2E password' });
+	}
+
+	get btnSavedMyPassword(): Locator {
+		return this.dialogSaveE2EEPassword.getByRole('button', { name: 'I saved my password' });
+	}
+
+	get bannerSaveEncryptionPassword(): Locator {
+		return this.page.getByRole('button', { name: 'Save your new E2EE password' });
+	}
+
+	get bannerEnterE2EEPassword(): Locator {
+		return this.page.getByRole('button', { name: 'Enter your E2E password' });
+	}
+
+	get audioRecorder(): Locator {
+		return this.page.getByRole('group', { name: 'Audio recorder', exact: true });
+	}
+
+	get homepageHeader(): Locator {
+		return this.page.locator('main').getByRole('heading', { name: 'Home' });
+	}
+
+	get dialogEmojiPicker(): Locator {
+		return this.page.getByRole('dialog', { name: 'Emoji picker' });
+	}
+
+	get scrollerEmojiPicker(): Locator {
+		return this.dialogEmojiPicker.locator('[data-overlayscrollbars]');
+	}
+
+	get btnJoinChannel(): Locator {
+		return this.content.btnJoinChannel;
+	}
+
+	getEmojiPickerTabByName(name: string) {
+		return this.dialogEmojiPicker.locator(`role=tablist >> role=tab[name="${name}"]`);
+	}
+
+	getEmojiByName(name: string) {
+		return this.dialogEmojiPicker.locator(`role=tabpanel >> [data-emoji="${name}"]`);
+	}
+
+	async pickEmoji(emoji: string, section = 'Smileys & People') {
+		await this.composer.btnEmoji.click();
+		await this.getEmojiPickerTabByName(section).click();
+		await this.getEmojiByName(emoji).click();
+	}
+
+	async waitForHome(): Promise<void> {
+		await this.waitForReady();
+	}
+
+	async waitForRoomLoad(): Promise<void> {
+		await this.roomHeaderToolbar.waitFor({ state: 'visible' });
+	}
+}

@@ -1,0 +1,49 @@
+import type { Locator, Page } from '@playwright/test';
+
+import { OmnichannelAdmin, OmnichannelSectionsHref } from './omnichannel-admin';
+import { FlexTab } from '../fragments/flextabs/flextab';
+
+class OmnichannelManageSlaPolicyFlexTab extends FlexTab {
+	constructor(page: Page) {
+		super(page.getByRole('dialog', { name: 'SLA policy' }));
+	}
+
+	get inputDescription(): Locator {
+		return this.root.getByRole('textbox', { name: 'Description' });
+	}
+
+	get inputEstimatedWaitTime(): Locator {
+		return this.root.getByRole('spinbutton', { name: 'Estimated wait time (time in minutes)', exact: true });
+	}
+}
+
+export class OmnichannelSlaPolicies extends OmnichannelAdmin {
+	protected readonly route = OmnichannelSectionsHref.slaPolicies;
+
+	protected readonly title = 'SLA policies';
+
+	readonly manageSlaPolicy: OmnichannelManageSlaPolicyFlexTab;
+
+	constructor(page: Page) {
+		super(page);
+		this.manageSlaPolicy = new OmnichannelManageSlaPolicyFlexTab(page);
+	}
+
+	override async search(text: string) {
+		await super.search(text);
+		await this.table.waitForSettled(this.emptyState);
+	}
+
+	btnRemove(name: string) {
+		return this.table.findRowByName(name).getByRole('button', { name: 'Remove' });
+	}
+
+	async removeSLA(name: string) {
+		await this.btnRemove(name).click();
+		await this.deleteModal.confirmDelete();
+	}
+
+	async createNew() {
+		await this.getButtonByType('SLA policy').click();
+	}
+}

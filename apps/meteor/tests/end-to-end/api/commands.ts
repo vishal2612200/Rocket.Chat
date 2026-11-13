@@ -1,0 +1,611 @@
+import { after, before, describe, it } from 'node:test';
+
+import type { Credentials } from '@rocket.chat/api-client';
+import type { IRoom, IThreadMessage, IUser } from '@rocket.chat/core-typings';
+import { Random } from '@rocket.chat/random';
+import { expect } from 'chai';
+
+import { getCredentials, api, request, credentials } from '../../data/api-data';
+import { sendSimpleMessage } from '../../data/chat.helper';
+import { createRoom, deleteRoom } from '../../data/rooms.helper';
+import { password } from '../../data/user';
+import type { TestUser } from '../../data/users.helper';
+import { createUser, deleteUser, login } from '../../data/users.helper';
+
+describe('[Commands]', () => {
+	before((_t, done) => getCredentials(done));
+
+	describe('[/commands.get]', () => {
+		it('should return an error when call the endpoint without "command" required parameter', async () => {
+			const res = await request.get(api('commands.get')).set(credentials).expect(400);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body.error).to.be.equal(`must have required property 'command'`);
+		});
+		it('should return an error when call the endpoint with an invalid command', async () => {
+			const res = await request
+				.get(api('commands.get'))
+				.set(credentials)
+				.query({
+					command: 'invalid-command',
+				})
+				.expect(400);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body.error).to.be.equal('There is no command in the system by the name of: invalid-command');
+		});
+		it('should return success when parameters are correct', async () => {
+			const res = await request
+				.get(api('commands.get'))
+				.set(credentials)
+				.query({
+					command: 'help',
+				})
+				.expect(200);
+
+			expect(res.body).to.have.property('success', true);
+			expect(res.body).to.have.property('command');
+			expect(res.body.command).to.have.property('command');
+			expect(res.body.command).to.have.property('description');
+			expect(res.body.command).to.have.property('clientOnly');
+			expect(res.body.command).to.have.property('providesPreview');
+		});
+	});
+
+	describe('[/commands.list]', () => {
+		it('should return a list of commands', async () => {
+			const res = await request.get(api('commands.list')).set(credentials).expect(200);
+
+			expect(res.body).to.have.property('success', true);
+			expect(res.body).to.have.property('offset');
+			expect(res.body).to.have.property('count');
+			expect(res.body).to.have.property('total');
+			expect(res.body).to.have.property('commands').and.to.be.an('array');
+		});
+		it('should return a list of commands even requested with count and offset params', async () => {
+			const res = await request
+				.get(api('commands.list'))
+				.set(credentials)
+				.query({
+					count: 5,
+					offset: 0,
+				})
+				.expect(200);
+
+			expect(res.body).to.have.property('success', true);
+			expect(res.body).to.have.property('offset');
+			expect(res.body).to.have.property('count');
+			expect(res.body).to.have.property('total');
+			expect(res.body).to.have.property('commands').and.to.be.an('array');
+		});
+	});
+
+	describe('[/commands.run]', () => {
+		let testChannel: IRoom;
+		let threadMessage: IThreadMessage;
+
+		before(async () => {
+			testChannel = (await createRoom({ type: 'c', name: `channel.test.commands.${Date.now()}` })).body.channel;
+			const { body: { message } = {} } = await sendSimpleMessage({
+				roomId: testChannel._id,
+				text: 'Message to create thread',
+			});
+
+			threadMessage = (
+				await sendSimpleMessage({
+					roomId: testChannel._id,
+					text: 'Thread Message',
+					tmid: message._id,
+				})
+			).body.message;
+		});
+
+		after(() => deleteRoom({ type: 'c', roomId: testChannel._id }));
+
+		it('should return an error when call the endpoint without "command" required parameter', async () => {
+			const res = await request.post(api('commands.run')).set(credentials).expect(400);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body.error).to.be.equal("must have required property 'command'");
+		});
+
+		it('should coerce non-string "params" to string via ajv coercion', async () => {
+			const res = await request
+				.post(api('commands.run'))
+				.set(credentials)
+				.send({
+					command: 'help',
+					roomId: 'GENERAL',
+					params: true,
+				})
+				.expect(200);
+
+			expect(res.body).to.have.property('success', true);
+		});
+		it('should return an error when call the endpoint without "roomId" required parameter', async () => {
+			const res = await request
+				.post(api('commands.run'))
+				.set(credentials)
+				.send({
+					command: 'help',
+					params: 'params',
+				})
+				.expect(400);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body.error).to.be.equal("must have required property 'roomId'");
+		});
+		it('should coerce non-string "tmid" to string via ajv coercion and fail with invalid thread', async () => {
+			const res = await request
+				.post(api('commands.run'))
+				.set(credentials)
+				.send({
+					command: 'help',
+					params: 'params',
+					roomId: 'GENERAL',
+					tmid: true,
+				})
+				.expect(400);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body.error).to.be.equal('Invalid thread.');
+		});
+		it('should return an error when call the endpoint with the invalid "command" param', async () => {
+			const res = await request
+				.post(api('commands.run'))
+				.set(credentials)
+				.send({
+					command: 'invalid-command',
+					params: 'params',
+					roomId: 'GENERAL',
+				})
+				.expect(400);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body.error).to.be.equal('The command provided does not exist (or is disabled).');
+		});
+		it('should return an error when call the endpoint with an invalid thread id', async () => {
+			const res = await request
+				.post(api('commands.run'))
+				.set(credentials)
+				.send({
+					command: 'tableflip',
+					params: 'params',
+					roomId: 'GENERAL',
+					tmid: 'invalid-thread',
+				})
+				.expect(400);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body.error).to.be.equal('Invalid thread.');
+		});
+		it('should return an error when call the endpoint with a valid thread id of wrong channel', async () => {
+			const res = await request
+				.post(api('commands.run'))
+				.set(credentials)
+				.send({
+					command: 'tableflip',
+					params: 'params',
+					roomId: 'GENERAL',
+					tmid: threadMessage.tmid,
+				})
+				.expect(400);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body.error).to.be.equal('Invalid thread.');
+		});
+		it('should return success when parameters are correct', async () => {
+			const res = await request
+				.post(api('commands.run'))
+				.set(credentials)
+				.send({
+					command: 'tableflip',
+					params: 'params',
+					roomId: threadMessage.rid,
+					tmid: threadMessage.tmid,
+				})
+				.expect(200);
+
+			expect(res.body).to.have.property('success', true);
+		});
+	});
+
+	describe('Command archive', () => {
+		describe('unauthorized cases', () => {
+			let user: TestUser<IUser>;
+			let credentials: Credentials;
+
+			before(async () => {
+				user = await createUser({
+					joinDefaultChannels: true,
+				});
+				credentials = await login(user.username, password);
+			});
+
+			after(async () => {
+				await deleteUser(user);
+			});
+
+			it('should return an error when the user is not logged in', async () => {
+				await request
+					.post(api('commands.run'))
+					.send({ command: 'archive', roomId: 'GENERAL' })
+					.expect(401)
+					.expect((res) => {
+						expect(res.body).to.have.property('success', false);
+						expect(res.body).to.have.property('error', 'You must be logged in to do this.');
+					});
+			});
+
+			it('should return an error when the user has not enough permissions', async () => {
+				await request
+					.post(api('commands.run'))
+					.set(credentials)
+					.send({
+						command: 'archive',
+						roomId: 'GENERAL',
+					})
+					.expect('Content-Type', 'application/json')
+					.expect(403)
+					.expect((res) => {
+						expect(res.body).to.have.property('success', false);
+
+						expect(res.body.errorType).to.be.equal('error-forbidden');
+					});
+			});
+		});
+
+		describe('authorized cases', () => {
+			after(async () => {
+				await request
+					.post(api('commands.run'))
+					.set(credentials)
+					.send({
+						command: 'unarchive',
+						roomId: 'GENERAL',
+					})
+					.expect('Content-Type', 'application/json')
+					.expect(200)
+					.expect((res) => {
+						expect(res.body).to.have.property('success', true);
+					});
+			});
+
+			it('should return a success when the user has enough permissions', async () => {
+				await request
+					.post(api('commands.run'))
+					.set(credentials)
+					.send({
+						command: 'archive',
+						roomId: 'GENERAL',
+					})
+					.expect('Content-Type', 'application/json')
+					.expect(200)
+					.expect((res) => {
+						expect(res.body).to.have.property('success', true);
+					});
+			});
+		});
+	});
+
+	describe('Command unarchive', () => {
+		describe('unauthorized cases', () => {
+			let user: TestUser<IUser>;
+			let credentials: Credentials;
+			before(async () => {
+				user = await createUser({
+					joinDefaultChannels: true,
+				});
+				credentials = await login(user.username, password);
+			});
+
+			after(async () => {
+				await deleteUser(user);
+			});
+
+			it('should return an error when the user is not logged in', async () => {
+				await request
+					.post(api('commands.run'))
+					.send({ command: 'unarchive', roomId: 'GENERAL' })
+					.expect(401)
+					.expect((res) => {
+						expect(res.body).to.have.property('success', false);
+						expect(res.body).to.have.property('error', 'You must be logged in to do this.');
+					});
+			});
+
+			it('should return an error when the user has not enough permissions', async () => {
+				await request
+					.post(api('commands.run'))
+					.set(credentials)
+					.send({
+						command: 'unarchive',
+						roomId: 'GENERAL',
+					})
+					.expect('Content-Type', 'application/json')
+					.expect(403)
+					.expect((res) => {
+						expect(res.body).to.have.property('success', false);
+
+						expect(res.body.errorType).to.be.equal('error-forbidden');
+					});
+			});
+		});
+
+		describe('authorized cases', () => {
+			before(async () => {
+				await request
+					.post(api('commands.run'))
+					.set(credentials)
+					.send({
+						command: 'archive',
+						roomId: 'GENERAL',
+					})
+					.expect('Content-Type', 'application/json')
+					.expect(200)
+					.expect((res) => {
+						expect(res.body).to.have.property('success', true);
+					});
+			});
+			it('should return a success when the user has enough permissions', async () => {
+				await request
+					.post(api('commands.run'))
+					.set(credentials)
+					.send({
+						command: 'unarchive',
+						roomId: 'GENERAL',
+					})
+					.expect('Content-Type', 'application/json')
+					.expect(200)
+					.expect((res) => {
+						expect(res.body).to.have.property('success', true);
+					});
+			});
+		});
+	});
+
+	describe('Command "topic"', () => {
+		let user: TestUser<IUser>;
+		let userCredentials: Credentials;
+
+		before(async () => {
+			user = await createUser({ joinDefaultChannels: true });
+			userCredentials = await login(user.username, password);
+		});
+
+		after(() => deleteUser(user));
+
+		it('should reject a user without the permission declared by the command', async () => {
+			await request
+				.post(api('commands.run'))
+				.set(userCredentials)
+				.send({ command: 'topic', roomId: 'GENERAL', params: 'new topic' })
+				.expect(403)
+				.expect((res) => {
+					expect(res.body).to.have.property('success', false);
+
+					expect(res.body.errorType).to.be.equal('error-forbidden');
+				});
+		});
+	});
+
+	describe('Command "invite-all-from"', () => {
+		let group: IRoom;
+		let group1: IRoom;
+		let channel: IRoom;
+		let user1: TestUser<IUser>;
+		let user2: TestUser<IUser>;
+		let user1Credentials: Credentials;
+		let user2Credentials: Credentials;
+
+		before(async () => {
+			user1 = await createUser();
+			user2 = await createUser();
+
+			[user1Credentials, user2Credentials] = await Promise.all([login(user1.username, password), login(user2.username, password)]);
+		});
+
+		before(async () => {
+			const [response1, response2, response3] = await Promise.all([
+				createRoom({ type: 'p', name: `room1-${Date.now()}.${Random.id()}`, credentials: user1Credentials }),
+				createRoom({ type: 'c', name: `room2-${Date.now()}.${Random.id()}`, credentials: user2Credentials }),
+				createRoom({ type: 'p', name: `room3-${Date.now()}.${Random.id()}` }),
+			]);
+			group = response1.body.group;
+			channel = response2.body.channel;
+			group1 = response3.body.group;
+		});
+
+		after(async () => {
+			await Promise.all([
+				deleteRoom({ type: 'p', roomId: group._id }),
+				deleteRoom({ type: 'c', roomId: channel._id }),
+				deleteRoom({ type: 'p', roomId: group1._id }),
+			]);
+			await Promise.all([deleteUser(user1, { confirmRelinquish: true }), deleteUser(user2)]);
+		});
+
+		it('should not add users from group which is not accessible by current user', async () => {
+			await request
+				.post(api('commands.run'))
+				.set(user2Credentials)
+				.send({
+					roomId: channel._id,
+					command: 'invite-all-from',
+					params: `#${group.name}`,
+					triggerId: Random.id(),
+				})
+				.expect(200)
+				.expect(async (res) => {
+					expect(res.body).to.have.a.property('success', true);
+				});
+
+			await request
+				.get(api('channels.members'))
+				.query({ roomId: channel._id })
+				.set(user2Credentials)
+				.expect(200)
+				.expect((res) => {
+					const isUser1Added = res.body.members.some((member: IUser) => member.username === user1.username);
+					expect(isUser1Added).to.be.false;
+				});
+		});
+
+		it('should not add users to a room that is not accessible by the current user', async () => {
+			await request
+				.post(api('commands.run'))
+				.set(user1Credentials)
+				.send({
+					roomId: group1._id,
+					command: 'invite-all-from',
+					params: `#${group.name}`,
+					triggerId: Random.id(),
+				})
+				.expect(403)
+				.expect((res) => {
+					expect(res.body).to.have.a.property('errorType', 'error-forbidden');
+				});
+		});
+
+		it('should add users from group which is accessible by current user', async () => {
+			await request
+				.post(api('groups.invite'))
+				.set(user1Credentials)
+				.send({
+					roomId: group._id,
+					userId: user2._id,
+				})
+				.expect(200);
+
+			await request
+				.post(api('commands.run'))
+				.set(user2Credentials)
+				.send({
+					roomId: channel._id,
+					command: 'invite-all-from',
+					params: `#${group.name}`,
+					triggerId: Random.id(),
+				})
+				.expect(200)
+				.expect(async (res) => {
+					expect(res.body).to.have.a.property('success', true);
+				});
+
+			await request
+				.get(api('channels.members'))
+				.set(user2Credentials)
+				.query({ roomId: channel._id })
+				.expect(200)
+				.expect((res) => {
+					const isUser1Added = res.body.members.some((member: IUser) => member.username === user1.username);
+					expect(isUser1Added).to.be.true;
+				});
+		});
+	});
+	describe('Command "kick"', () => {
+		let directMessageRoom: IRoom;
+		let user1: TestUser<IUser>;
+		let user1Credentials: Credentials;
+		before(async () => {
+			user1 = await createUser();
+
+			[user1Credentials] = await Promise.all([login(user1.username, password)]);
+		});
+
+		before(async () => {
+			const [response1] = await Promise.all([
+				createRoom({ type: 'd', name: `room1-${Date.now()}.${Random.id()}`, username: user1.username }),
+			]);
+			directMessageRoom = response1.body.room;
+		});
+
+		after(async () => {
+			await Promise.all([deleteRoom({ type: 'd', roomId: directMessageRoom._id })]);
+			await Promise.all([deleteUser(user1)]);
+		});
+
+		it('should fail when trying to kick a user from a direct message room', async () => {
+			const res = await request
+				.post(api('commands.run'))
+				.set(user1Credentials)
+				.send({ command: 'kick', roomId: directMessageRoom._id, params: user1.username })
+				.expect(403);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body).to.have.property('error').that.is.a('string');
+		});
+	});
+	describe('Command "leave"', () => {
+		let directMessageRoom: IRoom;
+		let user1: TestUser<IUser>;
+		let user2: TestUser<IUser>;
+		let user1Credentials: Credentials;
+		before(async () => {
+			user1 = await createUser();
+			user2 = await createUser();
+
+			[user1Credentials] = await Promise.all([login(user1.username, password)]);
+		});
+
+		before(async () => {
+			const [response1] = await Promise.all([
+				createRoom({ type: 'd', name: `room1-${Date.now()}.${Random.id()}`, username: user1.username }),
+			]);
+			directMessageRoom = response1.body.room;
+		});
+
+		after(async () => {
+			await Promise.all([deleteRoom({ type: 'd', roomId: directMessageRoom._id })]);
+			await Promise.all([deleteUser(user1), deleteUser(user2)]);
+		});
+
+		it('should fail when trying to leave a direct message room', async () => {
+			const res = await request
+				.post(api('commands.run'))
+				.set(user1Credentials)
+				.send({ command: 'leave', roomId: directMessageRoom._id })
+				.expect(403);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body).to.have.property('error').that.is.a('string');
+		});
+	});
+
+	// TODO: invite never fails
+	describe.skip('Command "invite"', () => {
+		let directMessageRoom: IRoom;
+		let user1: TestUser<IUser>;
+		let user2: TestUser<IUser>;
+		let user1Credentials: Credentials;
+		before(async () => {
+			user1 = await createUser();
+			user2 = await createUser();
+
+			[user1Credentials] = await Promise.all([login(user1.username, password)]);
+		});
+
+		before(async () => {
+			const [response1] = await Promise.all([
+				createRoom({ type: 'd', name: `room1-${Date.now()}.${Random.id()}`, username: user1.username }),
+			]);
+			directMessageRoom = response1.body.room;
+		});
+
+		after(async () => {
+			await Promise.all([deleteRoom({ type: 'd', roomId: directMessageRoom._id })]);
+			await Promise.all([deleteUser(user1), deleteUser(user2)]);
+		});
+
+		it('should fail when trying to invite a user to a direct message room', async () => {
+			const res = await request
+				.post(api('commands.run'))
+				.set(user1Credentials)
+				.send({ command: 'invite', roomId: directMessageRoom._id, params: 'g1' })
+				.expect(403);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body).to.have.property('error').that.is.a('string');
+			expect(res.body.errorType).to.be.equal('error-forbidden');
+		});
+	});
+});

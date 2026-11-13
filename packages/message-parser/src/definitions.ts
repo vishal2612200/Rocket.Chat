@@ -1,0 +1,298 @@
+export type Blockquote = {
+	type: 'BLOCKQUOTE';
+	value: Paragraph[];
+};
+
+export type OrderedList = {
+	type: 'ORDERED_LIST';
+	value: ListItem[];
+};
+
+export type UnorderedList = {
+	type: 'UNORDERED_LIST';
+	value: ListItem[];
+};
+
+export type ListItem = {
+	type: 'LIST_ITEM';
+	value: Inlines[];
+	number?: number;
+	nested?: NestedList[];
+};
+
+export type Tasks = {
+	type: 'TASKS';
+	value: Task[];
+};
+export type Task = {
+	type: 'TASK';
+	status: boolean;
+	value: Inlines[];
+	nested?: NestedList[];
+};
+
+export type NestedList = OrderedList | UnorderedList | Tasks;
+
+export type CodeLine = {
+	type: 'CODE_LINE';
+	value: Plain;
+};
+
+export type TableCellAlignment = 'left' | 'center' | 'right' | undefined;
+
+export type TableCell = {
+	type: 'TABLE_CELL';
+	align: TableCellAlignment;
+	value: Inlines[];
+};
+
+export type TableRow = {
+	type: 'TABLE_ROW';
+	value: TableCell[];
+};
+
+export type Table = {
+	type: 'TABLE';
+	value: {
+		header: TableCell[];
+		rows: TableRow[];
+	};
+	// New form is a `[start, end]` offset span; the `Plain` form is kept in the
+	// type only to tolerate previously-persisted data at runtime.
+	fallback?: SourceRange | Plain;
+};
+
+export type Color = {
+	type: 'COLOR';
+	value: {
+		r: number;
+		g: number;
+		b: number;
+		a: number;
+	};
+};
+
+export type BigEmoji = {
+	type: 'BIG_EMOJI';
+	value: [Emoji] | [Emoji, Emoji] | [Emoji, Emoji, Emoji];
+};
+
+export type Emoji =
+	| {
+			type: 'EMOJI';
+			value: Plain;
+			shortCode: string;
+	  }
+	| {
+			type: 'EMOJI';
+			value: undefined;
+			unicode: string;
+	  };
+
+export type Code = {
+	type: 'CODE';
+	language: string | undefined;
+	value: CodeLine[];
+};
+
+export type InlineCode = {
+	type: 'INLINE_CODE';
+	value: Plain;
+};
+
+export type Heading = {
+	type: 'HEADING';
+	level: 1 | 2 | 3 | 4;
+	value: Inlines[];
+};
+
+export type Quote = {
+	type: 'QUOTE';
+	value: Paragraph[];
+};
+
+export type Spoiler = {
+	type: 'SPOILER';
+	value: Array<
+		Link | Emoji | UserMention | ChannelMention | InlineCode | Italic | Bold | Strike | Timestamp | Color | Image | InlineKaTeX | Plain
+	>;
+};
+
+export type SpoilerBlock = {
+	type: 'SPOILER_BLOCK';
+	value: Paragraph[];
+};
+
+export type Markup = Italic | Strike | Bold | Plain | ChannelMention;
+export type MarkupExcluding<T extends Markup> = Exclude<Markup, T>;
+
+export type Bold = {
+	type: 'BOLD';
+	value: Array<MarkupExcluding<Bold> | Link | Emoji | UserMention | ChannelMention | InlineCode>;
+};
+
+export type Italic = {
+	type: 'ITALIC';
+	value: Array<MarkupExcluding<Italic> | Link | Emoji | UserMention | ChannelMention | InlineCode>;
+};
+
+export type Strike = {
+	type: 'STRIKE';
+	value: Array<MarkupExcluding<Strike> | Link | Emoji | UserMention | ChannelMention | InlineCode | Italic | Timestamp>;
+};
+
+export type Plain = {
+	type: 'PLAIN_TEXT';
+	value: string;
+};
+
+// [start, end] offsets into the original parsed source. Consumers that don't
+// implement a renderer for a node can slice the source to show the raw markup,
+// without duplicating the text into the AST.
+export type SourceRange = [number, number];
+
+export type LineBreak = {
+	type: 'LINE_BREAK';
+	value: undefined;
+};
+
+export type HorizontalRule = {
+	type: 'HORIZONTAL_RULE';
+	value: undefined;
+	// New form is a `[start, end]` offset span; the `Plain` form is kept in the
+	// type only to tolerate previously-persisted data at runtime.
+	fallback?: SourceRange | Plain;
+};
+
+export type KaTeX = {
+	type: 'KATEX';
+	value: string;
+};
+
+export type InlineKaTeX = {
+	type: 'INLINE_KATEX';
+	value: string;
+};
+
+export type Paragraph = {
+	type: 'PARAGRAPH';
+	value: Array<Exclude<Inlines, Paragraph>>;
+};
+
+export type Image = {
+	type: 'IMAGE';
+	value: {
+		src: Plain;
+		label: Markup;
+	};
+};
+
+export type Link = {
+	type: 'LINK';
+	value: {
+		src: Plain;
+		label: Markup | Markup[];
+	};
+};
+
+export type UserMention = {
+	type: 'MENTION_USER';
+	value: Plain;
+};
+
+export type ChannelMention = {
+	type: 'MENTION_CHANNEL';
+	value: Plain;
+};
+
+export type Timestamp = {
+	type: 'TIMESTAMP';
+	value: {
+		timestamp: string;
+		format: 't' | 'T' | 'd' | 'D' | 'f' | 'F' | 'R';
+	};
+	// New form is a `[start, end]` offset span; the `Plain` form is kept in the
+	// type only to tolerate previously-persisted data at runtime.
+	fallback?: SourceRange | Plain;
+};
+
+export type Types = {
+	BOLD: Bold;
+	SPOILER: Spoiler;
+	PARAGRAPH: Paragraph;
+	PLAIN_TEXT: Plain;
+	ITALIC: Italic;
+	STRIKE: Strike;
+	CODE: Code;
+	CODE_LINE: CodeLine;
+	INLINE_CODE: InlineCode;
+	HEADING: Heading;
+	QUOTE: Quote;
+	LINK: Link;
+	MENTION_USER: UserMention;
+	MENTION_CHANNEL: ChannelMention;
+	EMOJI: Emoji;
+	BIG_EMOJI: BigEmoji;
+	COLOR: Color;
+	TASKS: Tasks;
+	TASK: Task;
+	UNORDERED_LIST: UnorderedList;
+	ORDERED_LIST: OrderedList;
+	LIST_ITEM: ListItem;
+	IMAGE: Image;
+	LINE_BREAK: LineBreak;
+	HORIZONTAL_RULE: HorizontalRule;
+	KATEX: KaTeX;
+	INLINE_KATEX: InlineKaTeX;
+	TIMESTAMP: Timestamp;
+	SPOILER_BLOCK: SpoilerBlock;
+	TABLE: Table;
+	TABLE_ROW: TableRow;
+	TABLE_CELL: TableCell;
+};
+
+export type ASTNode =
+	| BigEmoji
+	| Bold
+	| Spoiler
+	| Paragraph
+	| Plain
+	| Italic
+	| Strike
+	| Code
+	| CodeLine
+	| InlineCode
+	| Heading
+	| Quote
+	| SpoilerBlock
+	| Link
+	| UserMention
+	| ChannelMention
+	| Emoji
+	| Color
+	| Tasks
+	| HorizontalRule
+	| Table;
+
+export type TypesKeys = keyof Types;
+
+export type Inlines =
+	| Timestamp
+	| Bold
+	| Spoiler
+	| Plain
+	| Italic
+	| Strike
+	| InlineCode
+	| Image
+	| Link
+	| UserMention
+	| ChannelMention
+	| Emoji
+	| Color
+	| InlineKaTeX;
+
+export type Blocks =
+	Code | Heading | Quote | SpoilerBlock | ListItem | Tasks | OrderedList | UnorderedList | LineBreak | KaTeX | HorizontalRule | Table;
+
+export type Root = Array<Paragraph | Blocks> | [BigEmoji];

@@ -1,0 +1,51 @@
+import { PageSkeleton, useHasLicenseModule } from '@rocket.chat/ui-client';
+import { usePermission, useRouter, useSetModal, useCurrentModal } from '@rocket.chat/ui-contexts';
+import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import DeviceManagementAdminPage from './DeviceManagementAdminPage';
+import GenericUpsellModal from '../../../components/GenericUpsellModal';
+import { useUpsellActions } from '../../../components/GenericUpsellModal/hooks';
+import { getURL } from '../../../lib/getURL';
+import NotAuthorizedPage from '../../notAuthorized/NotAuthorizedPage';
+
+const DeviceManagementAdminRoute = () => {
+	const { t } = useTranslation();
+	const router = useRouter();
+	const setModal = useSetModal();
+	const isModalOpen = !!useCurrentModal();
+
+	const { data: hasDeviceManagement = false, isPending } = useHasLicenseModule('device-management');
+	const canViewDeviceManagement = usePermission('view-device-management');
+
+	const { shouldShowUpsell, handleManageSubscription } = useUpsellActions(hasDeviceManagement);
+
+	useEffect(() => {
+		if (shouldShowUpsell) {
+			setModal(
+				<GenericUpsellModal
+					aria-label={t('Device_Management')}
+					title={t('Device_Management')}
+					img={getURL('images/device-management.png')}
+					subtitle={t('Ensure_secure_workspace_access')}
+					description={t('Manage_which_devices')}
+					onClose={() => setModal(null)}
+					onConfirm={handleManageSubscription}
+					onCancel={() => setModal(null)}
+				/>,
+			);
+		}
+	}, [shouldShowUpsell, router, setModal, t, handleManageSubscription]);
+
+	if (isModalOpen || isPending) {
+		return <PageSkeleton />;
+	}
+
+	if (!canViewDeviceManagement || !hasDeviceManagement) {
+		return <NotAuthorizedPage />;
+	}
+
+	return <DeviceManagementAdminPage />;
+};
+
+export default DeviceManagementAdminRoute;

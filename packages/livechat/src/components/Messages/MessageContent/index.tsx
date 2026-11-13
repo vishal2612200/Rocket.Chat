@@ -1,0 +1,19 @@
+import type { ComponentChildren } from 'preact';
+import type { CSSProperties } from 'preact/compat';
+import { memo } from 'preact/compat';
+
+import styles from './styles.module.scss';
+import { createClassName } from '../../../helpers/createClassName';
+
+export type MessageContentProps = {
+	reverse?: boolean;
+	className?: string;
+	style?: CSSProperties;
+	children?: ComponentChildren;
+};
+
+export const MessageContent = memo(({ reverse, className, style = {}, children }: MessageContentProps) => (
+	<div className={createClassName(styles, 'message-content', { reverse }, [className])} style={style}>
+		{children}
+	</div>
+));

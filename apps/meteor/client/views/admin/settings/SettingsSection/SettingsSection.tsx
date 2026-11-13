@@ -1,0 +1,104 @@
+import { isSetting, isSettingColor } from '@rocket.chat/core-typings';
+import { AccordionItem, Button, ButtonGroup, FieldGroup, Stack, Text } from '@rocket.chat/fuselage';
+import { useStableCallback } from '@rocket.chat/fuselage-hooks';
+import type { ReactNode } from 'react';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useEditableSettings, useEditableSettingsDispatch } from '../../EditableSettingsContext';
+import Setting from '../Setting';
+
+export type SettingsSectionProps = {
+	groupId: string;
+	hasReset?: boolean;
+	sectionName: string;
+	sectionTitle?: string;
+	currentTab?: string;
+	solo: boolean;
+	help?: ReactNode;
+	children?: ReactNode;
+};
+
+function SettingsSection({ groupId, hasReset = true, sectionTitle, sectionName, currentTab, solo, help, children }: SettingsSectionProps) {
+	const { t } = useTranslation();
+
+	const editableSettings = useEditableSettings(
+		useMemo(
+			() => ({
+				group: groupId,
+				section: sectionName,
+				tab: currentTab,
+			}),
+			[groupId, sectionName, currentTab],
+		),
+	);
+
+	const changed = useMemo(() => editableSettings.some(({ changed }) => changed), [editableSettings]);
+
+	const canReset = useMemo(
+		() => editableSettings.some(({ value, packageValue }) => JSON.stringify(value) !== JSON.stringify(packageValue)),
+		[editableSettings],
+	);
+
+	const dispatch = useEditableSettingsDispatch();
+
+	const reset = useStableCallback(() => {
+		dispatch(
+			editableSettings
+				.filter(({ disabled }) => !disabled)
+				.map((setting) => {
+					if (isSettingColor(setting)) {
+						return {
+							_id: setting._id,
+							value: setting.packageValue,
+							editor: setting.packageEditor,
+							changed:
+								JSON.stringify(setting.value) !== JSON.stringify(setting.packageValue) ||
+								JSON.stringify(setting.editor) !== JSON.stringify(setting.packageEditor),
+						};
+					}
+					return {
+						_id: setting._id,
+						value: setting.packageValue,
+						changed: JSON.stringify(setting.value) !== JSON.stringify(setting.packageValue),
+					};
+				}),
+		);
+	});
+
+	const handleResetSectionClick = (): void => {
+		reset();
+	};
+
+	return (
+		<AccordionItem
+			data-qa-section={sectionName}
+			noncollapsible={solo || !sectionName}
+			title={sectionTitle || (sectionName && t(sectionName))}
+		>
+			{help && (
+				<Text is='p' color='hint' fontScale='p2'>
+					{help}
+				</Text>
+			)}
+			<Stack gap={16}>
+				<FieldGroup>
+					{editableSettings.map(
+						(setting) => isSetting(setting) && <Setting key={setting._id} settingId={setting._id} sectionChanged={changed} />,
+					)}
+
+					{children}
+				</FieldGroup>
+				{hasReset && canReset && (
+					<ButtonGroup>
+						<Button variant='secondary-danger' data-section={sectionName} onClick={handleResetSectionClick}>
+							{t('Reset_section_settings')}
+						</Button>
+					</ButtonGroup>
+				)}
+			</Stack>
+		</AccordionItem>
+	);
+}
+
+export default SettingsSection;

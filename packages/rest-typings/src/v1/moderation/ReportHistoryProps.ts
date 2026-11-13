@@ -1,0 +1,39 @@
+import type { PaginatedRequest } from '../../helpers/PaginatedRequest';
+import { ajvQuery } from '../Ajv';
+import { paginationQueryProperties } from '../pagination';
+
+type ReportHistoryProps = {
+	latest?: string;
+	oldest?: string;
+	selector?: string;
+};
+
+export type ReportHistoryPropsGET = PaginatedRequest<ReportHistoryProps>;
+
+const reportHistoryPropsSchema = {
+	type: 'object',
+	properties: {
+		latest: {
+			type: 'string',
+			format: 'date-time',
+			nullable: true,
+		},
+		oldest: {
+			type: 'string',
+			format: 'date-time',
+			nullable: true,
+		},
+		selector: {
+			type: 'string',
+			nullable: true,
+		},
+		...paginationQueryProperties,
+		sort: {
+			type: 'string',
+			nullable: true,
+		},
+	},
+	additionalProperties: false,
+};
+
+export const isReportHistoryProps = ajvQuery.compile<ReportHistoryPropsGET>(reportHistoryPropsSchema);

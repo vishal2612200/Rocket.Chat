@@ -1,0 +1,5 @@
+coverage
+data
+dist
+vite
+client/**/*.css

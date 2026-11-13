@@ -1,0 +1,128 @@
+import type { SelectOption } from '@rocket.chat/fuselage';
+import { Box, Field, FieldLabel, FieldRow, Select, Margins, Option } from '@rocket.chat/fuselage';
+import { useStableCallback } from '@rocket.chat/fuselage-hooks';
+import { Page, PageHeader, PageScrollableContentWithShadow } from '@rocket.chat/ui-client';
+import { useQueryClient } from '@tanstack/react-query';
+import type { Key } from 'react';
+import { useId, useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { getDateRange } from '../../../lib/utils/getDateRange';
+import AutoCompleteDepartment from '../components/AutoCompleteDepartment';
+import AgentStatusChart from './charts/AgentStatusChart';
+import ChatDurationChart from './charts/ChatDurationChart';
+import ChatsChart from './charts/ChatsChart';
+import ChatsPerAgentChart from './charts/ChatsPerAgentChart';
+import ChatsPerDepartmentChart from './charts/ChatsPerDepartmentChart';
+import ResponseTimesChart from './charts/ResponseTimesChart';
+import AgentsOverview from './overviews/AgentsOverview';
+import ChatsOverview from './overviews/ChatsOverview';
+import ConversationOverview from './overviews/ConversationOverview';
+import ProductivityOverview from './overviews/ProductivityOverview';
+import { omnichannelQueryKeys } from '../../../lib/queryKeys';
+
+const dateRange = getDateRange();
+
+const RealTimeMonitoringPage = () => {
+	const { t } = useTranslation();
+
+	const [reloadFrequency, setReloadFrequency] = useState(5);
+	const [departmentId, setDepartment] = useState('');
+	const departmentsLabelId = useId();
+	const updateEveryField = useId();
+
+	const queryClient = useQueryClient();
+
+	const reloadCharts = useStableCallback(() => {
+		queryClient.invalidateQueries({ queryKey: omnichannelQueryKeys.analytics.all(departmentId) });
+	});
+
+	useEffect(() => {
+		const interval = setInterval(reloadCharts, reloadFrequency * 1000);
+
+		return () => {
+			clearInterval(interval);
+		};
+	}, [reloadCharts, reloadFrequency]);
+
+	const reloadOptions = useMemo<SelectOption[]>(
+		() => [
+			['5', `5 ${t('seconds')}`],
+			['10', `10 ${t('seconds')}`],
+			['30', `30 ${t('seconds')}`],
+			['60', `1 ${t('minute')}`],
+		],
+		[t],
+	);
+
+	return (
+		<Page>
+			<PageHeader title={t('Real_Time_Monitoring')} />
+			<PageScrollableContentWithShadow>
+				<Margins block='x4'>
+					<Box flexDirection='row' display='flex' justifyContent='space-between' alignSelf='center' width='full' gap={8} paddingInline={4}>
+						<Box maxWidth='50%' flexGrow={1}>
+							<Field>
+								<FieldLabel id={departmentsLabelId}>{t('Departments')}</FieldLabel>
+								<FieldRow>
+									<AutoCompleteDepartment
+										aria-labelledby={departmentsLabelId}
+										value={departmentId}
+										onChange={setDepartment}
+										placeholder={t('All')}
+										onlyMyDepartments
+										withTitle={false}
+										renderItem={({ label, ...props }) => (
+											<Option {...props} label={<span style={{ whiteSpace: 'normal' }}>{label}</span>} />
+										)}
+									/>
+								</FieldRow>
+							</Field>
+						</Box>
+						<Box maxWidth='50%' flexGrow={1}>
+							<Field>
+								<FieldLabel htmlFor={updateEveryField}>{t('Update_every')}</FieldLabel>
+								<FieldRow>
+									<Select
+										id={updateEveryField}
+										options={reloadOptions}
+										onChange={useStableCallback((val: Key) => setReloadFrequency(Number(val)))}
+										value={String(reloadFrequency)}
+									/>
+								</FieldRow>
+							</Field>
+						</Box>
+					</Box>
+					<Box display='flex' flexDirection='row' width='full' alignItems='stretch' flexShrink={1}>
+						<ConversationOverview flexGrow={1} flexShrink={1} width='50%' departmentId={departmentId} dateRange={dateRange} />
+					</Box>
+					<Box display='flex' flexDirection='row' width='full' alignItems='stretch' flexShrink={1} gap='x4'>
+						<ChatsChart flexGrow={1} flexShrink={1} width='50%' departmentId={departmentId} dateRange={dateRange} />
+						<ChatsPerAgentChart flexGrow={1} flexShrink={1} width='50%' departmentId={departmentId} dateRange={dateRange} />
+					</Box>
+					<Box display='flex' flexDirection='row' width='full' alignItems='stretch' flexShrink={1}>
+						<ChatsOverview flexGrow={1} flexShrink={1} width='50%' departmentId={departmentId} dateRange={dateRange} />
+					</Box>
+					<Box display='flex' flexDirection='row' width='full' alignItems='stretch' flexShrink={1} gap='x4'>
+						<AgentStatusChart flexGrow={1} flexShrink={1} width='50%' departmentId={departmentId} />
+						<ChatsPerDepartmentChart flexGrow={1} flexShrink={1} width='50%' departmentId={departmentId} dateRange={dateRange} />
+					</Box>
+					<Box display='flex' flexDirection='row' width='full' alignItems='stretch' flexShrink={1}>
+						<AgentsOverview flexGrow={1} flexShrink={1} departmentId={departmentId} dateRange={dateRange} />
+					</Box>
+					<Box display='flex' width='full' flexShrink={1}>
+						<ChatDurationChart flexGrow={1} flexShrink={1} width='100%' departmentId={departmentId} dateRange={dateRange} />
+					</Box>
+					<Box display='flex' flexDirection='row' width='full' alignItems='stretch' flexShrink={1}>
+						<ProductivityOverview flexGrow={1} flexShrink={1} departmentId={departmentId} dateRange={dateRange} />
+					</Box>
+					<Box display='flex' width='full' flexShrink={1}>
+						<ResponseTimesChart flexGrow={1} flexShrink={1} width='100%' departmentId={departmentId} dateRange={dateRange} />
+					</Box>
+				</Margins>
+			</PageScrollableContentWithShadow>
+		</Page>
+	);
+};
+
+export default RealTimeMonitoringPage;

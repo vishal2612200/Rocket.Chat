@@ -1,0 +1,112 @@
+import { Box, Button, Pagination, type TableColumnWidth } from '@rocket.chat/fuselage';
+import { useDebouncedValue, useStableCallback } from '@rocket.chat/fuselage-hooks';
+import {
+	GenericTable,
+	GenericTableBody,
+	GenericTableCell,
+	GenericTableHeader,
+	GenericTableHeaderCell,
+	GenericTableRow,
+	usePaginatedQuery,
+	usePagination,
+	GenericNoResults,
+} from '@rocket.chat/ui-client';
+import { useEndpoint, useRouter, useSearchParameter } from '@rocket.chat/ui-contexts';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import AttributeMenu from './AttributeMenu';
+import FilterByText from '../../../../components/FilterByText';
+import { ABACQueryKeys } from '../../../../lib/queryKeys';
+import { useIsABACAvailable } from '../hooks/useIsABACAvailable';
+
+const AttributesPage = () => {
+	const { t } = useTranslation();
+
+	const searchTerm = useSearchParameter('searchTerm');
+	const [text, setText] = useState(searchTerm ?? '');
+
+	const debouncedText = useDebouncedValue(text, 400);
+	const getAttributes = useEndpoint('GET', '/v1/abac/attributes');
+	const isABACAvailable = useIsABACAvailable();
+
+	const router = useRouter();
+	const handleNewAttribute = useStableCallback(() => {
+		router.navigate({
+			name: 'admin-ABAC',
+			params: {
+				tab: 'room-attributes',
+				context: 'new',
+			},
+		});
+	});
+
+	const query = useMemo(
+		() => ({
+			...(debouncedText ? { key: debouncedText, values: debouncedText } : {}),
+		}),
+		[debouncedText],
+	);
+
+	const queryKey = ABACQueryKeys.roomAttributes.list(query);
+	const { current, itemsPerPage, setItemsPerPage, setCurrent, ...paginationProps } = usePagination({ resetKey: queryKey });
+
+	const { data, isLoading } = usePaginatedQuery({
+		query: {
+			queryKey,
+			queryFn: (page) => getAttributes({ ...query, ...page }),
+		},
+		itemsKey: 'attributes',
+		offset: current,
+		count: itemsPerPage,
+	});
+
+	const columns: TableColumnWidth[] = ['auto', 'auto', 40];
+
+	return (
+		<>
+			<FilterByText placeholder={t('ABAC_Search_attributes')} value={text} onChange={(e) => setText(e.target.value)}>
+				<Button onClick={handleNewAttribute} variant='primary' disabled={!isABACAvailable}>
+					{t('ABAC_New_attribute')}
+				</Button>
+			</FilterByText>
+			{(!data || data.attributes?.length === 0) && !isLoading ? (
+				<Box display='flex' justifyContent='center' height='full'>
+					<GenericNoResults icon='list-alt' title={t('ABAC_No_attributes')} description={t('ABAC_No_attributes_description')} />
+				</Box>
+			) : (
+				<>
+					<GenericTable columns={columns}>
+						<GenericTableHeader>
+							<GenericTableHeaderCell>{t('Name')}</GenericTableHeaderCell>
+							<GenericTableHeaderCell>{t('Value')}</GenericTableHeaderCell>
+							<GenericTableHeaderCell key='spacer' />
+						</GenericTableHeader>
+						<GenericTableBody>
+							{data?.attributes?.map((attribute) => (
+								<GenericTableRow key={attribute._id}>
+									<GenericTableCell truncate>{attribute.key}</GenericTableCell>
+									<GenericTableCell truncate>{attribute.values.join(', ')}</GenericTableCell>
+									<GenericTableCell>
+										<AttributeMenu attribute={attribute} />
+									</GenericTableCell>
+								</GenericTableRow>
+							))}
+						</GenericTableBody>
+					</GenericTable>
+					<Pagination
+						divider
+						current={current}
+						itemsPerPage={itemsPerPage}
+						count={data?.total || 0}
+						onSetItemsPerPage={setItemsPerPage}
+						onSetCurrent={setCurrent}
+						{...paginationProps}
+					/>
+				</>
+			)}
+		</>
+	);
+};
+
+export default AttributesPage;

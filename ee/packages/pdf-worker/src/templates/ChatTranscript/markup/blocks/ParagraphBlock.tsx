@@ -1,0 +1,11 @@
+import type * as MessageParser from '@rocket.chat/message-parser';
+
+import InlineElements from '../elements/InlineElements';
+
+export type ParagraphBlockProps = {
+	items: MessageParser.Inlines[];
+};
+
+const ParagraphBlock = ({ items }: ParagraphBlockProps) => <InlineElements>{items}</InlineElements>;
+
+export default ParagraphBlock;

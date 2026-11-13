@@ -1,0 +1,645 @@
+import { faker } from '@faker-js/faker';
+import type { Page } from '@playwright/test';
+
+import { IS_EE } from './config/constants';
+import { Users } from './fixtures/userStates';
+import { AccountFeaturePreview, AdminInfo, HomeChannel, HomeDiscussion, HomeTeam } from './page-objects';
+import { CreateNewChannelModal, CreateNewDiscussionModal } from './page-objects/fragments/modals';
+import {
+	createTargetChannel,
+	createTargetTeam,
+	deleteChannel,
+	deleteTeam,
+	setSettingValueById,
+	createTargetDiscussion,
+	deleteRoom,
+} from './utils';
+import { preserveSettings } from './utils/preserveSettings';
+import { setUserPreferences } from './utils/setUserPreferences';
+import { test, expect } from './utils/test';
+
+test.use({ storageState: Users.admin.state });
+
+test.describe.serial('feature preview', () => {
+	let poHomeChannel: HomeChannel;
+	let poHomeTeam: HomeTeam;
+	let targetChannel: string;
+	let targetDiscussion: Record<string, string>;
+	let sidepanelTeam: string;
+	const targetChannelNameInTeam = `channel-from-team-${faker.number.int()}`;
+
+	preserveSettings(['Accounts_AllowFeaturePreview']);
+
+	test.beforeAll(async ({ api }) => {
+		await setSettingValueById(api, 'Accounts_AllowFeaturePreview', true);
+		targetChannel = await createTargetChannel(api, { members: ['user1'] });
+		targetDiscussion = await createTargetDiscussion(api);
+
+		await setUserPreferences(api, {
+			featuresPreview: [
+				{
+					name: 'newNavigation',
+					value: true,
+				},
+			],
+		});
+	});
+
+	test.afterAll(async ({ api }) => {
+		await deleteChannel(api, targetChannel);
+		await deleteRoom(api, targetDiscussion._id);
+		await setUserPreferences(api, {
+			featuresPreview: [
+				{
+					name: 'newNavigation',
+					value: false,
+				},
+			],
+		});
+	});
+
+	test.beforeEach(async ({ page }) => {
+		poHomeChannel = new HomeChannel(page);
+		poHomeTeam = new HomeTeam(page);
+	});
+
+	test('should show "Navigation" feature section', async ({ page }) => {
+		await new AccountFeaturePreview(page).goto();
+
+		await expect(page.getByRole('main').getByRole('button', { name: 'Navigation' })).toBeVisible();
+	});
+
+	test.describe('Sidepanel', () => {
+		let newChannelModal: CreateNewChannelModal;
+
+		test.beforeEach(async ({ api }) => {
+			sidepanelTeam = await createTargetTeam(api);
+
+			await setUserPreferences(api, {
+				featuresPreview: [
+					{
+						name: 'newNavigation',
+						value: true,
+					},
+					{
+						name: 'secondarySidebar',
+						value: true,
+					},
+				],
+			});
+		});
+
+		test.afterEach(async ({ api }) => {
+			await deleteTeam(api, sidepanelTeam);
+
+			await setUserPreferences(api, {
+				featuresPreview: [
+					{
+						name: 'newNavigation',
+						value: false,
+					},
+					{
+						name: 'secondarySidebar',
+						value: false,
+					},
+				],
+			});
+		});
+
+		test('should display new channel from team on the sidepanel', async ({ page, api }) => {
+			newChannelModal = new CreateNewChannelModal(page);
+
+			await poHomeTeam.gotoGroup(sidepanelTeam);
+
+			await poHomeTeam.headerToolbar.openTeamChannels();
+			await poHomeTeam.tabs.channels.btnCreateNew.click();
+
+			await newChannelModal.inputName.fill(targetChannelNameInTeam);
+			await newChannelModal.checkboxPrivate.click();
+			await newChannelModal.btnCreate.click();
+
+			await expect(poHomeTeam.sidepanel.sidepanelList).toBeVisible();
+			await expect(poHomeTeam.sidepanel.getItemByName(targetChannelNameInTeam)).toBeVisible();
+
+			await deleteChannel(api, targetChannelNameInTeam);
+		});
+
+		test('should display sidepanel item with the same display preference as the sidebar', async () => {
+			await poHomeChannel.goto();
+			const message = 'hello world';
+
+			await poHomeChannel.navbar.openChat(sidepanelTeam);
+			await poHomeChannel.content.sendMessage(message);
+			await expect(poHomeChannel.sidepanel.getItemByName(sidepanelTeam)).toBeVisible();
+		});
+
+		test('should escape special characters on item subtitle', async () => {
+			await poHomeChannel.goto();
+			const message = 'hello > world';
+			const parsedWrong = 'hello &gt; world';
+
+			await poHomeChannel.navbar.openChat(sidepanelTeam);
+			await poHomeChannel.content.sendMessage(message);
+
+			await expect(poHomeChannel.sidepanel.getItemByName(sidepanelTeam)).toBeVisible();
+			await expect(poHomeChannel.sidepanel.getItemByName(sidepanelTeam)).not.toHaveText(parsedWrong);
+		});
+
+		test('should show channel in sidepanel after adding existing one', async () => {
+			await poHomeTeam.gotoGroup(sidepanelTeam);
+
+			await poHomeTeam.headerToolbar.openTeamChannels();
+			await poHomeTeam.tabs.channels.addExistingChannel(targetChannel);
+
+			await expect(poHomeTeam.sidepanel.getItemByName(targetChannel)).toBeVisible();
+		});
+
+		test.describe('team and channels sorting', () => {
+			let user1Page: Page;
+
+			test.beforeEach(async ({ browser }) => {
+				user1Page = await browser.newPage({ storageState: Users.user1.state });
+			});
+
+			test.afterEach(async () => {
+				await user1Page.close();
+			});
+
+			test('should keep the main room on the top even if child has unread messages', async ({ page }) => {
+				const user1Channel = new HomeChannel(user1Page);
+
+				const teamMainRoomLink = poHomeTeam.sidepanel.getTeamItemByName(sidepanelTeam);
+				const childChannelLink = poHomeTeam.sidepanel.getTeamItemByName(targetChannel);
+
+				await test.step('add the channel to the team', async () => {
+					await poHomeTeam.gotoGroup(sidepanelTeam);
+					await poHomeTeam.headerToolbar.openTeamChannels();
+					await poHomeTeam.tabs.channels.addExistingChannel(targetChannel);
+				});
+
+				await test.step('send a message in the channel, then a newer one in the team', async () => {
+					await childChannelLink.click();
+					await expect(page).toHaveURL(`/channel/${targetChannel}`);
+					await poHomeTeam.content.sendMessage('hello channel');
+
+					await expect(async () => {
+						await teamMainRoomLink.focus();
+						await teamMainRoomLink.click();
+						await expect(page).toHaveURL(`/group/${sidepanelTeam}`);
+					}).toPass();
+					await poHomeTeam.content.sendMessage('hello team');
+				});
+
+				await test.step('open the team filter on the sidepanel', async () => {
+					await poHomeTeam.sidebar.getFilterItemByName(sidepanelTeam).click();
+					await expect(poHomeTeam.sidepanel.getSidepanelHeader(sidepanelTeam)).toBeVisible();
+				});
+
+				await test.step('send a thread message in the channel from another user', async () => {
+					await user1Channel.gotoChannel(targetChannel);
+					await user1Channel.content.openReplyInThread();
+					await user1Channel.content.toggleAlsoSendThreadToChannel(false);
+					await user1Channel.content.sendMessageInThread('hello thread');
+				});
+
+				await test.step('team main room should stay above the channel with newer unread activity', async () => {
+					await expect(childChannelLink.getByRole('status', { name: '1 unread threaded message' })).toBeVisible();
+					await expect(teamMainRoomLink.locator('..')).toHaveAttribute('data-item-index', '0');
+					await expect(childChannelLink.locator('..')).toHaveAttribute('data-item-index', '1');
+				});
+			});
+		});
+
+		test('sidepanel should open the respective parent room filter if its a room filter', async ({ page }) => {
+			await poHomeChannel.gotoChannel(targetChannel);
+			await poHomeChannel.waitForRoomLoad();
+			await poHomeChannel.sidebar.getFilterItemByName(sidepanelTeam).click();
+			await poHomeChannel.content.waitForChannel();
+
+			await expect(page).toHaveURL(`/group/${sidepanelTeam}`);
+			await expect(poHomeChannel.sidepanel.getSidepanelHeader(sidepanelTeam)).toBeVisible();
+			await expect(poHomeChannel.sidepanel.getItemByName(sidepanelTeam)).toHaveAttribute('aria-current', 'page');
+		});
+
+		test('sidepanel should not open the respective parent room filter if its not a room filter', async ({ page }) => {
+			await poHomeChannel.goto();
+			await poHomeChannel.sidebar.favoritesTeamCollabFilter.click();
+
+			await expect(poHomeChannel.sidepanel.getSidepanelHeader('Favorites')).toBeVisible();
+			await expect(poHomeChannel.navbar.btnHome).toBeVisible();
+
+			await poHomeChannel.navbar.openChat(sidepanelTeam);
+			await poHomeChannel.content.waitForChannel();
+
+			await expect(page).toHaveURL(`/group/${sidepanelTeam}`);
+			await expect(poHomeChannel.sidepanel.getSidepanelHeader('Favorites')).toBeVisible();
+			await expect(poHomeChannel.sidebar.favoritesTeamCollabFilter).toHaveAttribute('aria-selected', 'true');
+		});
+
+		test('should show all filters and tablist on sidepanel', async () => {
+			await poHomeChannel.goto();
+
+			await expect(poHomeChannel.sidebar.teamCollabFilters).toBeVisible();
+			await expect(poHomeChannel.sidebar.omnichannelFilters).toBeVisible();
+
+			await expect(poHomeChannel.sidebar.allTeamCollabFilter).toBeVisible();
+			await expect(poHomeChannel.sidebar.favoritesTeamCollabFilter).toBeVisible();
+			await expect(poHomeChannel.sidebar.discussionsTeamCollabFilter).toBeVisible();
+		});
+
+		test('should show favorite team on the sidepanel', async () => {
+			test.skip(IS_EE);
+
+			await poHomeChannel.gotoGroup(sidepanelTeam);
+			await poHomeChannel.sidebar.favoritesTeamCollabFilter.click();
+
+			await expect(poHomeChannel.sidepanel.getTeamItemByName(sidepanelTeam)).not.toBeVisible();
+
+			await poHomeChannel.getRoomHeaderFavoriteBtn(IS_EE).click();
+
+			await expect(poHomeChannel.sidepanel.getTeamItemByName(sidepanelTeam)).toBeVisible();
+		});
+
+		test('should show discussion in discussions and all sidepanel filter, should remove after deleting discussion', async ({ page }) => {
+			const poHomeDiscussion = new HomeDiscussion(page);
+			await poHomeChannel.gotoGroup(sidepanelTeam);
+
+			const discussionName = faker.string.uuid();
+
+			await poHomeChannel.composer.btnMenuMoreActions.click();
+			await page.getByRole('menuitem', { name: 'Discussion' }).click();
+			const createDiscussionModal = new CreateNewDiscussionModal(page);
+			await createDiscussionModal.inputName.fill(discussionName);
+			await createDiscussionModal.create();
+			await expect(page.getByRole('heading', { name: discussionName })).toBeVisible();
+
+			await poHomeDiscussion.sidebar.discussionsTeamCollabFilter.click();
+			await expect(poHomeDiscussion.sidepanel.getItemByName(discussionName)).toBeVisible();
+
+			await poHomeDiscussion.sidebar.allTeamCollabFilter.click();
+			await expect(poHomeDiscussion.sidepanel.getItemByName(discussionName)).toBeVisible();
+
+			await poHomeDiscussion.roomToolbar.openRoomInfo();
+			await poHomeDiscussion.tabs.room.deleteRoom();
+
+			await poHomeDiscussion.sidebar.discussionsTeamCollabFilter.click();
+			await expect(poHomeDiscussion.sidepanel.getItemByName(discussionName)).not.toBeVisible();
+
+			await poHomeDiscussion.sidebar.allTeamCollabFilter.click();
+			await expect(poHomeDiscussion.sidepanel.getItemByName(discussionName)).not.toBeVisible();
+		});
+
+		test('should persist sidepanel state after page reload', async ({ page }) => {
+			await poHomeChannel.goto();
+			await poHomeChannel.sidebar.discussionsTeamCollabFilter.click();
+			await poHomeChannel.sidepanel.unreadToggleLabel.click({ force: true });
+
+			await expect(poHomeChannel.sidepanel.unreadCheckbox).toBeChecked();
+			await expect(poHomeChannel.sidepanel.getSidepanelHeader('Discussions')).toBeVisible();
+
+			await page.reload();
+
+			await expect(poHomeChannel.sidepanel.unreadCheckbox).toBeChecked();
+			await expect(poHomeChannel.sidepanel.getSidepanelHeader('Discussions')).toBeVisible();
+		});
+
+		test('should show unread filter for thread messages', async ({ browser }) => {
+			const user1Page = await browser.newPage({ storageState: Users.user1.state });
+			const user1Channel = new HomeChannel(user1Page);
+
+			await test.step('mark all rooms as read', async () => {
+				await poHomeChannel.goto();
+				await poHomeChannel.content.markAllRoomsAsRead();
+			});
+
+			await poHomeChannel.gotoChannel(targetChannel);
+			await poHomeChannel.content.sendMessage('test thread message');
+
+			await poHomeChannel.navbar.btnHome.click();
+			await poHomeChannel.sidebar.allTeamCollabFilter.click();
+			await poHomeChannel.sidepanel.unreadToggleLabel.click();
+
+			await expect(poHomeChannel.sidepanel.unreadCheckbox).toBeChecked();
+
+			await test.step('send a thread message from another user', async () => {
+				await user1Channel.gotoChannel(targetChannel);
+				await user1Channel.content.openReplyInThread();
+				await user1Channel.content.toggleAlsoSendThreadToChannel(false);
+				await user1Channel.content.sendMessageInThread('hello thread');
+			});
+
+			await expect(poHomeChannel.sidepanel.getItemByName(targetChannel)).toBeVisible();
+			await expect(
+				poHomeChannel.sidepanel.getItemByName(targetChannel).getByRole('status', { name: '1 unread threaded message' }),
+			).toBeVisible();
+
+			await poHomeChannel.sidepanel.getItemByName(targetChannel).click();
+			await poHomeChannel.content.waitForChannel();
+
+			await expect(poHomeChannel.sidepanel.getItemByName(targetChannel)).toBeVisible();
+			await expect(
+				poHomeChannel.sidepanel.getItemByName(targetChannel).getByRole('status', { name: '1 unread threaded message' }),
+			).toBeVisible();
+
+			await poHomeChannel.content.openReplyInThread();
+			await user1Page.close();
+		});
+
+		test('unread mentions badges on filters', async ({ browser }) => {
+			test.skip(IS_EE);
+
+			const user1Page = await browser.newPage({ storageState: Users.user1.state });
+			const user1Channel = new HomeChannel(user1Page);
+
+			await test.step('mark all rooms as read', async () => {
+				await poHomeChannel.goto();
+				await poHomeChannel.content.markAllRoomsAsRead();
+			});
+
+			await test.step('should favorite the target channel', async () => {
+				await poHomeChannel.gotoChannel(targetChannel);
+				await poHomeChannel.sidebar.favoritesTeamCollabFilter.click();
+
+				await expect(poHomeChannel.sidepanel.getItemByName(targetChannel)).not.toBeVisible();
+
+				await poHomeChannel.getRoomHeaderFavoriteBtn(IS_EE).click();
+
+				await expect(poHomeChannel.sidepanel.getItemByName(targetChannel)).toBeVisible();
+			});
+
+			await test.step('unread state should be empty', async () => {
+				await poHomeChannel.sidebar.allTeamCollabFilter.click();
+				await poHomeChannel.sidepanel.unreadToggleLabel.click();
+
+				await expect(poHomeChannel.sidepanel.unreadCheckbox).toBeChecked();
+
+				await poHomeChannel.sidebar.favoritesTeamCollabFilter.click();
+
+				await expect(poHomeChannel.sidepanel.unreadCheckbox).toBeChecked();
+			});
+
+			await poHomeChannel.navbar.btnHome.click();
+
+			await test.step('send a mention message from another user', async () => {
+				await user1Channel.gotoChannel(targetChannel);
+				await user1Channel.content.sendMessage(`hello @${Users.admin.data.username}`);
+			});
+
+			await test.step('unread mentions badge should be visible on all filters', async () => {
+				await poHomeChannel.sidebar.allTeamCollabFilter.click();
+
+				await expect(poHomeChannel.sidepanel.getItemByName(targetChannel)).toBeVisible();
+				await expect(poHomeChannel.sidepanel.getItemByName(targetChannel).getByRole('status', { name: '1 mention' })).toBeVisible();
+				await expect(poHomeChannel.sidebar.allTeamCollabFilter.getByRole('status', { name: '1 mention from All' })).toBeVisible();
+
+				await poHomeChannel.sidebar.favoritesTeamCollabFilter.click();
+				await expect(poHomeChannel.sidepanel.getItemByName(targetChannel)).toBeVisible();
+				await expect(poHomeChannel.sidepanel.getItemByName(targetChannel).getByRole('status', { name: '1 mention' })).toBeVisible();
+				await expect(
+					poHomeChannel.sidebar.favoritesTeamCollabFilter.getByRole('status', { name: '1 mention from Favorites' }),
+				).toBeVisible();
+			});
+
+			await test.step('read the room', async () => {
+				await poHomeChannel.sidepanel.getItemByName(targetChannel).click();
+				await poHomeChannel.content.waitForChannel();
+			});
+
+			await test.step('unread mentions badge should not be visible on any filters', async () => {
+				await expect(poHomeChannel.sidepanel.unreadCheckbox).toBeChecked();
+
+				await poHomeChannel.sidebar.favoritesTeamCollabFilter.click();
+
+				await expect(poHomeChannel.sidepanel.unreadCheckbox).toBeChecked();
+
+				await poHomeChannel.sidebar.allTeamCollabFilter.click();
+
+				await expect(poHomeChannel.sidepanel.unreadCheckbox).toBeChecked();
+			});
+
+			await user1Page.close();
+		});
+
+		test('should persist sidepanel state after switching admin panel', async ({ page }) => {
+			await poHomeChannel.goto();
+			await poHomeChannel.sidebar.discussionsTeamCollabFilter.click();
+			await poHomeChannel.sidepanel.unreadToggleLabel.click();
+
+			await expect(poHomeChannel.sidepanel.unreadCheckbox).toBeChecked();
+			await expect(poHomeChannel.sidepanel.getSidepanelHeader('Discussions')).toBeVisible();
+
+			await poHomeChannel.navbar.openAdminPanel();
+			await expect(page).toHaveURL(/\/admin/);
+
+			const adminPage = new AdminInfo(page);
+
+			await adminPage.sidebar.btnClose.click();
+			await expect(page).toHaveURL(/\/home/);
+
+			await expect(poHomeChannel.sidepanel.unreadCheckbox).toBeChecked();
+			await expect(poHomeChannel.sidepanel.getSidepanelHeader('Discussions')).toBeVisible();
+		});
+
+		test.describe('sidebar and sidepanel in small viewport', () => {
+			test.beforeEach(async ({ page }) => {
+				await page.setViewportSize({ width: 640, height: 460 });
+			});
+
+			test('should show button to toggle sidebar/sidepanel', async () => {
+				await poHomeChannel.goto();
+
+				await poHomeChannel.sidebar.waitForDismissal();
+				await expect(poHomeChannel.sidepanel.sidepanel).not.toBeVisible();
+				await expect(poHomeChannel.navbar.btnSidebarToggler()).toBeVisible();
+			});
+
+			test('should toggle sidebar/sidepanel when clicking the button', async () => {
+				await poHomeChannel.goto();
+
+				await poHomeChannel.navbar.btnSidebarToggler().click();
+				await poHomeChannel.sidebar.waitForDismissal();
+				await expect(poHomeChannel.sidepanel.sidepanel).toBeVisible();
+
+				await poHomeChannel.navbar.btnSidebarToggler(true).click();
+				await poHomeChannel.sidebar.waitForDismissal();
+				await expect(poHomeChannel.sidepanel.sidepanel).not.toBeVisible();
+			});
+
+			test('toggle sidebar and sidepanel', async () => {
+				await poHomeChannel.goto();
+				await poHomeChannel.navbar.btnSidebarToggler().click();
+
+				await expect(poHomeChannel.sidepanel.sidepanelBackButton).toBeVisible();
+
+				await poHomeChannel.sidepanel.sidepanelBackButton.click();
+
+				await poHomeChannel.sidebar.waitForDisplay();
+				await expect(poHomeChannel.sidepanel.sidepanel).not.toBeVisible();
+
+				await poHomeChannel.sidebar.favoritesTeamCollabFilter.click();
+
+				await expect(poHomeChannel.sidepanel.sidepanel).toBeVisible();
+				await expect(poHomeChannel.sidepanel.getSidepanelHeader('Favorites')).toBeVisible();
+			});
+
+			test('should close nav region when clicking outside of it', async ({ page }) => {
+				await poHomeChannel.goto();
+				await poHomeChannel.navbar.btnSidebarToggler().click();
+
+				await expect(poHomeChannel.sidepanel.sidepanel).toBeVisible();
+
+				await page.click('main', { force: true });
+
+				await expect(poHomeChannel.sidepanel.sidepanel).not.toBeVisible();
+				await poHomeChannel.sidebar.waitForDismissal();
+			});
+
+			test('should close nav region when opening a room', async () => {
+				await poHomeChannel.goto();
+				await poHomeChannel.navbar.btnSidebarToggler().click();
+
+				await expect(poHomeChannel.sidepanel.sidepanel).toBeVisible();
+
+				await poHomeChannel.sidepanel.getItemByName(targetChannel).click();
+				await poHomeChannel.content.waitForChannel();
+				await expect(poHomeChannel.content.channelHeader).toContainText(targetChannel);
+
+				await expect(poHomeChannel.sidepanel.sidepanel).not.toBeVisible();
+				await poHomeChannel.sidebar.waitForDismissal();
+			});
+		});
+	});
+
+	test.describe('Sidebar room filters', () => {
+		test.beforeAll(async ({ api }) => {
+			sidepanelTeam = await createTargetTeam(api);
+
+			await setUserPreferences(api, {
+				featuresPreview: [
+					{
+						name: 'newNavigation',
+						value: true,
+					},
+					{
+						name: 'secondarySidebar',
+						value: true,
+					},
+				],
+			});
+		});
+
+		test.afterAll(async ({ api }) => {
+			await deleteTeam(api, sidepanelTeam);
+
+			await setUserPreferences(api, {
+				featuresPreview: [
+					{
+						name: 'newNavigation',
+						value: false,
+					},
+					{
+						name: 'secondarySidebar',
+						value: false,
+					},
+				],
+			});
+		});
+
+		test('should open rooms when clicking on sidebar filter', async ({ page }) => {
+			await poHomeChannel.goto();
+
+			await expect(poHomeChannel.sidebar.channelsList).toBeVisible();
+			await poHomeChannel.sidebar.getFilterItemByName(sidepanelTeam).click({ force: true });
+
+			await expect(poHomeChannel.sidepanel.sidepanel).toBeVisible();
+			await expect(poHomeChannel.sidepanel.getSidepanelHeader(sidepanelTeam)).toBeVisible();
+
+			await expect(poHomeChannel.sidepanel.getTeamItemByName(sidepanelTeam)).toBeVisible();
+			await expect(page).toHaveURL(`/group/${sidepanelTeam}`);
+		});
+
+		test('should open room when clicking on sidepanel item', async ({ page }) => {
+			await poHomeChannel.goto();
+			await poHomeChannel.sidebar.getFilterItemByName(sidepanelTeam).click();
+
+			await expect(poHomeChannel.sidepanel.sidepanel).toBeVisible();
+			await expect(poHomeChannel.sidepanel.getSidepanelHeader(sidepanelTeam)).toBeVisible();
+
+			await poHomeChannel.sidepanel.getTeamItemByName(sidepanelTeam).click();
+			await poHomeChannel.content.waitForChannel();
+			await expect(page).toHaveURL(`/group/${sidepanelTeam}`);
+		});
+
+		test('should display rooms in direct message filter', async ({ page }) => {
+			const discussionName = faker.string.uuid();
+
+			await test.step('create a direct message with user1', async () => {
+				await poHomeChannel.goto();
+
+				await poHomeChannel.navbar.openChat(Users.user1.data.username);
+				await poHomeChannel.content.waitForChannel();
+				await expect(poHomeChannel.content.channelHeader).toContainText(Users.user1.data.username);
+			});
+
+			await test.step('create discussion in DM', async () => {
+				await poHomeChannel.composer.btnMenuMoreActions.click();
+				await page.getByRole('menuitem', { name: 'Discussion' }).click();
+				const createDiscussionModal = new CreateNewDiscussionModal(page);
+				await createDiscussionModal.inputName.fill(discussionName);
+				await createDiscussionModal.create();
+				await poHomeChannel.content.waitForChannel();
+				await poHomeChannel.content.sendMessage('hello');
+
+				await expect(page.getByRole('heading', { name: discussionName })).toBeVisible();
+			});
+
+			await test.step('open direct message sidebar filter', async () => {
+				await poHomeChannel.sidebar.teamsCollapser.click();
+				await poHomeChannel.sidebar.channelsCollapser.click();
+
+				await expect(poHomeChannel.sidebar.directMessagesCollapser).toBeVisible();
+				await expect(poHomeChannel.sidebar.directMessagesCollapser.getByRole('button')).toHaveAttribute('aria-expanded', 'true');
+				await expect(poHomeChannel.sidebar.getFilterItemByName(Users.user1.data.username)).toBeVisible();
+
+				await poHomeChannel.sidebar.getFilterItemByName(Users.user1.data.username).click();
+
+				await expect(poHomeChannel.sidepanel.sidepanel).toBeVisible();
+				await expect(poHomeChannel.sidepanel.getSidepanelHeader(Users.user1.data.username)).toBeVisible();
+				await expect(poHomeChannel.sidepanel.getMainRoomByName(Users.user1.data.username)).toBeVisible();
+				await expect(poHomeChannel.sidepanel.getItemByName(discussionName)).toBeVisible();
+				await expect(poHomeChannel.sidepanel.getItemByName(discussionName)).toContainText('hello');
+
+				await poHomeChannel.sidepanel.getMainRoomByName(Users.user1.data.username).click();
+				await poHomeChannel.content.waitForChannel();
+				await poHomeChannel.content.sendMessage('hello DM');
+
+				await expect(poHomeChannel.content.channelHeader).toContainText(Users.user1.data.username);
+				await expect(page).toHaveURL(/direct/);
+				await expect(poHomeChannel.sidepanel.getMainRoomByName(Users.user1.data.username)).toHaveAttribute('aria-current', 'page');
+				await expect(poHomeChannel.sidepanel.getMainRoomByName(Users.user1.data.username)).toContainText('hello DM');
+				await expect(poHomeChannel.sidepanel.getItemByName(discussionName)).not.toHaveAttribute('aria-current');
+				await expect(poHomeChannel.sidepanel.getItemByName(discussionName)).toContainText('hello');
+
+				await poHomeChannel.sidepanel.getItemByName(discussionName).click();
+				await poHomeChannel.content.waitForChannel();
+
+				await expect(page).toHaveURL(/group/);
+				await expect(poHomeChannel.sidepanel.getMainRoomByName(Users.user1.data.username)).not.toHaveAttribute('aria-current');
+				await expect(poHomeChannel.sidepanel.getMainRoomByName(Users.user1.data.username)).toContainText('hello DM');
+				await expect(poHomeChannel.sidepanel.getItemByName(discussionName)).toHaveAttribute('aria-current', 'page');
+				await expect(poHomeChannel.sidepanel.getItemByName(discussionName)).toContainText('hello');
+				await expect(poHomeChannel.sidepanel.getSidepanelHeader(Users.user1.data.username)).toBeVisible();
+			});
+		});
+
+		test('should not open rooms when clicking on sidebar filters in small viewport', async ({ page }) => {
+			await page.setViewportSize({ width: 640, height: 460 });
+			await poHomeChannel.goto();
+
+			await poHomeChannel.sidebar.waitForDismissal();
+			await expect(poHomeChannel.sidepanel.sidepanel).not.toBeVisible();
+			await poHomeChannel.navbar.btnSidebarToggler().click();
+			await expect(poHomeChannel.sidepanel.sidepanel).toBeVisible();
+		});
+	});
+});

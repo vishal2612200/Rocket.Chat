@@ -1,0 +1,44 @@
+import { FocusScope } from '@react-aria/focus';
+import { Box } from '@rocket.chat/fuselage';
+
+import Key from './Key';
+
+export type KeypadProps = {
+	onKeyPress(key: string): void;
+	autoFocus?: boolean;
+};
+
+const DIGITS = [
+	['1', ''],
+	['2', 'ABC'],
+	['3', 'DEF'],
+	['4', 'GHI'],
+	['5', 'JKL'],
+	['6', 'MNO'],
+	['7', 'PQRS'],
+	['8', 'TUV'],
+	['9', 'WXYZ'],
+	['*', ''],
+	['0', '+', '+'],
+	['#', ''],
+];
+
+const Keypad = ({ onKeyPress, autoFocus = true }: KeypadProps) => (
+	<FocusScope autoFocus={autoFocus}>
+		<Box display='flex' justifyContent='center' flexWrap='wrap' maxWidth={196} gap={8} padding={4}>
+			{DIGITS.map(([primaryDigit, alternativeDigit, longPressDigit]) => (
+				<Key
+					large={primaryDigit === '*'}
+					key={primaryDigit}
+					primaryKey={primaryDigit}
+					alternativeKey={alternativeDigit}
+					longPressKey={longPressDigit}
+					onLongKeyPress={onKeyPress}
+					onKeyPress={onKeyPress}
+				/>
+			))}
+		</Box>
+	</FocusScope>
+);
+
+export default Keypad;

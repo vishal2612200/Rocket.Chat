@@ -1,0 +1,26 @@
+import { Icon, Tag } from '@rocket.chat/fuselage';
+import { useHasLicenseModule } from '@rocket.chat/ui-client';
+import { useTranslation } from 'react-i18next';
+
+export type OmnichannelVerificationTagProps = {
+	verified?: boolean;
+	onClick?: () => void;
+};
+
+const OmnichannelVerificationTag = ({ verified, onClick }: OmnichannelVerificationTagProps) => {
+	const { t } = useTranslation();
+	const { data: hasLicense = false } = useHasLicenseModule('contact-id-verification');
+	const isVerified = hasLicense && verified;
+
+	return (
+		<Tag
+			variant={isVerified ? 'primary' : undefined}
+			onClick={!isVerified && onClick ? onClick : undefined}
+			icon={<Icon size='x12' name={isVerified ? 'success-circle' : 'question-mark'} />}
+		>
+			{isVerified ? t('Verified') : t('Unverified')}
+		</Tag>
+	);
+};
+
+export default OmnichannelVerificationTag;

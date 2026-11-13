@@ -1,0 +1,45 @@
+import { Field } from '@rocket.chat/fuselage';
+import type { Meta } from '@storybook/react';
+
+import BooleanSettingInput from './BooleanSettingInput';
+
+export default {
+	component: BooleanSettingInput,
+	parameters: {
+		actions: {
+			argTypesRegex: '^on.*',
+		},
+	},
+	decorators: [(fn) => <Field>{fn()}</Field>],
+} satisfies Meta<typeof BooleanSettingInput>;
+
+export const Default = {
+	args: {
+		_id: 'setting_id',
+		label: 'Label',
+	},
+};
+
+export const Disabled = {
+	args: {
+		_id: 'setting_id',
+		label: 'Label',
+		disabled: true,
+	},
+};
+
+export const Checked = {
+	args: {
+		_id: 'setting_id',
+		label: 'Label',
+		value: true,
+	},
+};
+
+export const WithResetButton = {
+	args: {
+		_id: 'setting_id',
+		label: 'Label',
+		hasResetButton: true,
+	},
+};

@@ -1,0 +1,70 @@
+import type { Span, Tracer } from '@opentelemetry/api';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import type { CommandStartedEvent, MongoClient } from 'mongodb';
+
+export const initDatabaseTracing = (tracer: Tracer, client: MongoClient) => {
+	const DurationStart = new Map<number, { event: CommandStartedEvent; span: Span }>();
+
+	client.on('commandStarted', (event) => {
+		const collection = event.command[event.commandName];
+
+		const currentSpan = trace.getSpan(context.active());
+		if (currentSpan) {
+			const span = tracer.startSpan(`mongodb ${collection}.${event.commandName}`, {
+				attributes: {
+					'db.connection_string': event.address,
+					'db.mongodb.collection': collection,
+					'db.name': event.databaseName,
+					'db.operation': event.commandName,
+					'db.statement': JSON.stringify(
+						event.command,
+						(_key, value: unknown) => {
+							// Support for tracing MongoDB commands with RegExp
+							if (value instanceof RegExp) {
+								return value.toString();
+							}
+							return value;
+						},
+						2,
+					),
+					'db.system': 'mongodb',
+					// net.peer.name
+					// net.peer.port
+				},
+			});
+
+			DurationStart.set(event.requestId, { event, span });
+		}
+	});
+
+	client.on('commandSucceeded', (event) => {
+		const started = DurationStart.get(event.requestId);
+		if (!started) {
+			return;
+		}
+
+		const { span } = started;
+		DurationStart.delete(event.requestId);
+
+		span.end();
+	});
+
+	client.on('commandFailed', (event) => {
+		const started = DurationStart.get(event.requestId);
+		if (!started) {
+			return;
+		}
+
+		const { span } = started;
+
+		DurationStart.delete(event.requestId);
+
+		span.recordException(event.failure);
+		span.setStatus({
+			code: SpanStatusCode.ERROR,
+			message: event.failure.message,
+		});
+
+		span.end();
+	});
+};

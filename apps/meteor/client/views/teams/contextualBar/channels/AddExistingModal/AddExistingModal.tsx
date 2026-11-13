@@ -1,0 +1,132 @@
+import type { IRoom } from '@rocket.chat/core-typings';
+import {
+	Box,
+	Button,
+	Field,
+	FieldLabel,
+	Modal,
+	ModalClose,
+	ModalContent,
+	ModalFooter,
+	ModalFooterControllers,
+	ModalHeader,
+	ModalTitle,
+} from '@rocket.chat/fuselage';
+import { GenericModal } from '@rocket.chat/ui-client';
+import { useToastMessageDispatch, useEndpoint } from '@rocket.chat/ui-contexts';
+import { memo, useCallback, useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+
+import RoomsAvailableForTeamsAutoComplete from './RoomsAvailableForTeamsAutoComplete';
+import AbacAttributesRemovalWarning from '../../../../../components/ABAC/AbacAttributesRemovalWarning';
+
+type AddExistingModalFormData = {
+	rooms: IRoom['_id'][];
+};
+
+export type AddExistingModalProps = {
+	teamId: string;
+	onClose: () => void;
+	reload?: () => void;
+};
+
+// TODO: Use GenericModal instead of Modal
+const AddExistingModal = ({ teamId, onClose, reload }: AddExistingModalProps) => {
+	const { t } = useTranslation();
+	const dispatchToastMessage = useToastMessageDispatch();
+
+	const addRoomEndpoint = useEndpoint('POST', '/v1/teams.addRooms');
+	const [abacRoomNames, setAbacRoomNames] = useState<string[]>([]);
+	const [roomsToConfirm, setRoomsToConfirm] = useState<IRoom['_id'][]>();
+
+	const {
+		control,
+		formState: { isDirty },
+		handleSubmit,
+	} = useForm<AddExistingModalFormData>({ defaultValues: { rooms: [] } });
+
+	const handleAddChannels = useCallback(
+		async ({ rooms }: AddExistingModalFormData) => {
+			try {
+				await addRoomEndpoint({
+					rooms,
+					teamId,
+				});
+
+				dispatchToastMessage({ type: 'success', message: t('Channels_added') });
+				reload?.();
+			} catch (error) {
+				dispatchToastMessage({ type: 'error', message: error });
+			} finally {
+				onClose();
+			}
+		},
+		[addRoomEndpoint, teamId, onClose, dispatchToastMessage, reload, t],
+	);
+
+	const handleSubmitRooms = useCallback(
+		async ({ rooms }: AddExistingModalFormData) => {
+			if (abacRoomNames.length) {
+				setRoomsToConfirm(rooms);
+				return;
+			}
+
+			await handleAddChannels({ rooms });
+		},
+		[abacRoomNames, handleAddChannels],
+	);
+
+	if (roomsToConfirm) {
+		return (
+			<GenericModal
+				variant='warning'
+				title={t('Confirmation')}
+				confirmText={t('Add')}
+				onConfirm={() => handleAddChannels({ rooms: roomsToConfirm })}
+				onCancel={onClose}
+				onClose={onClose}
+			>
+				<Box paddingBlockStart={16}>
+					<AbacAttributesRemovalWarning roomNames={abacRoomNames} />
+				</Box>
+			</GenericModal>
+		);
+	}
+
+	return (
+		<Modal
+			aria-label={t('Team_Add_existing_channels')}
+			wrapperFunction={(props) => <Box is='form' onSubmit={handleSubmit(handleSubmitRooms)} {...props} />}
+		>
+			<ModalHeader>
+				<ModalTitle>{t('Team_Add_existing_channels')}</ModalTitle>
+				<ModalClose onClick={onClose} />
+			</ModalHeader>
+			<ModalContent>
+				<Box paddingBlockEnd={24}>
+					<Field>
+						<FieldLabel>{t('Channels')}</FieldLabel>
+						<Controller
+							control={control}
+							name='rooms'
+							render={({ field: { value, onChange } }) => (
+								<RoomsAvailableForTeamsAutoComplete value={value} onChange={onChange} onAbacRoomsChange={setAbacRoomNames} />
+							)}
+						/>
+					</Field>
+				</Box>
+			</ModalContent>
+			<ModalFooter>
+				<ModalFooterControllers>
+					<Button onClick={onClose}>{t('Cancel')}</Button>
+					<Button disabled={!isDirty} type='submit' variant='primary'>
+						{t('Add')}
+					</Button>
+				</ModalFooterControllers>
+			</ModalFooter>
+		</Modal>
+	);
+};
+
+export default memo(AddExistingModal);

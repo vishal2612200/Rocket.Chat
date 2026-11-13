@@ -1,0 +1,57 @@
+import type { IAuditLog } from '@rocket.chat/core-typings';
+import { Box, Text } from '@rocket.chat/fuselage';
+import { useMediaQuery } from '@rocket.chat/fuselage-hooks';
+import { UserAvatar } from '@rocket.chat/ui-avatar';
+import { GenericTableRow, GenericTableCell, useFormatDateAndTime } from '@rocket.chat/ui-client';
+import { memo, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import AuditFiltersDisplay from './AuditFiltersDisplay';
+
+export type AuditLogEntryProps = { value: IAuditLog };
+
+const AuditLogEntry = ({ value: { u, results, ts, _id, fields } }: AuditLogEntryProps) => {
+	const formatDateAndTime = useFormatDateAndTime();
+	const { t } = useTranslation();
+
+	const { username, name, avatarETag } = u;
+
+	const { msg, users, room, startDate, endDate, type, filters } = fields;
+
+	const when = useMemo(() => formatDateAndTime(ts), [formatDateAndTime, ts]);
+
+	const mediaQuery = useMediaQuery('(min-width: 1024px)');
+
+	return (
+		<GenericTableRow key={_id} tabIndex={0} role='link'>
+			<GenericTableCell truncate>
+				<Box display='flex' alignItems='center'>
+					{username && <UserAvatar size={mediaQuery ? 'x28' : 'x40'} title={username} username={username} etag={avatarETag} />}
+					<Box display='flex' withTruncatedText marginInline={8}>
+						<Box display='flex' flexDirection='column' alignSelf='center' withTruncatedText>
+							<Text fontScale='p2m' truncate color='default'>
+								{name || username}
+							</Text>
+							{name && (
+								<Text fontScale='p2' color='hint' truncate>
+									{' '}
+									{`@${username}`}{' '}
+								</Text>
+							)}
+						</Box>
+					</Box>
+				</Box>
+			</GenericTableCell>
+			<GenericTableCell strong color='hint' truncate>
+				{type === 'room_member_list' ? t('Room_members_list') : msg}
+			</GenericTableCell>
+			<GenericTableCell truncate>{when}</GenericTableCell>
+			<GenericTableCell truncate>{results}</GenericTableCell>
+			<GenericTableCell color='hint' truncate>
+				<AuditFiltersDisplay users={users} room={room} startDate={startDate} endDate={endDate} filters={filters} />
+			</GenericTableCell>
+		</GenericTableRow>
+	);
+};
+
+export default memo(AuditLogEntry);

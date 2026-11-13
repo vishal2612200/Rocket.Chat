@@ -1,0 +1,52 @@
+{
+	"$schema": "https://turborepo.org/schema.json",
+	"globalPassThroughEnv": ["MONGOMS_DOWNLOAD_DIR", "MONGOMS_PREFER_GLOBAL_PATH"],
+	"agentGuidance": false,
+	"tasks": {
+		"build-preview": {
+			"dependsOn": ["^build"],
+			"outputs": ["storybook-static/**", ".storybook/**", "dist/**"]
+		},
+		".:build-preview-move": {
+			"dependsOn": ["^build-preview"],
+			"cache": false
+		},
+		"build": {
+			"dependsOn": ["^build"],
+			"outputs": ["dist/**"]
+		},
+		"test-storybook": {
+			"outputs": ["coverage/**"]
+		},
+		"testunit": {
+			"dependsOn": ["^build"],
+			"outputs": ["coverage/**"]
+		},
+		"lint": {
+			"outputs": []
+		},
+		"typecheck": {
+			"outputs": []
+		},
+		"dev": {
+			"dependsOn": ["^dev"],
+			"cache": false
+		},
+		"dsv": {
+			"dependsOn": ["build"],
+			"cache": false
+		},
+		"ms": {
+			"dependsOn": ["^build"],
+			"cache": false
+		},
+		"@rocket.chat/meteor#build": {
+			"dependsOn": ["^build"],
+			"cache": false
+		},
+		"@rocket.chat/meteor#build:ci": {
+			"env": ["BABEL_ENV"],
+			"cache": false
+		}
+	}
+}

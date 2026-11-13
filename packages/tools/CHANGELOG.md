@@ -1,0 +1,139 @@
+# @rocket.chat/tools
+
+## 0.5.0
+
+### Minor Changes
+
+- ([#42501](https://github.com/RocketChat/Rocket.Chat/pull/42501)) Adds a native XMPP server (Enterprise, federation module) that federates directly with other XMPP servers over server-to-server connections. Rocket.Chat users can message any XMPP address, exchange presence with remote contacts, and join rooms on remote servers; remote XMPP users can join dedicated XMPP rooms hosted by Rocket.Chat. It runs as the `xmpp-server-service` microservice and is configured under **Administration → Settings → Federation → XMPP Server (Native)**.
+
+### Patch Changes
+
+- ([#43500](https://github.com/RocketChat/Rocket.Chat/pull/43500)) Fixes requests to the federation, Apps-Engine endpoint, UiKit interaction, OAuth login, `.well-known` metadata, health probe, `/_timesync` and `/theme.css` routes not appearing in the HTTP request log, and redacts OAuth authorization codes from logged URLs
+
+- ([#42341](https://github.com/RocketChat/Rocket.Chat/pull/42341)) Fixes HTML entity unescaping turning names like `&toString;` into function source and garbling numeric entities above U+FFFF, such as emoji, and fixes the string helpers throwing on symbols and turning `0` and `false` into empty strings
+
+## 0.5.0-rc.1
+
+### Patch Changes
+
+- ([#43500](https://github.com/RocketChat/Rocket.Chat/pull/43500)) Fixes requests to the federation, Apps-Engine endpoint, UiKit interaction, OAuth login, `.well-known` metadata, health probe, `/_timesync` and `/theme.css` routes not appearing in the HTTP request log, and redacts OAuth authorization codes from logged URLs
+
+## 0.5.0-rc.0
+
+### Minor Changes
+
+- ([#42501](https://github.com/RocketChat/Rocket.Chat/pull/42501)) Adds a native XMPP server (Enterprise, federation module) that federates directly with other XMPP servers over server-to-server connections. Rocket.Chat users can message any XMPP address, exchange presence with remote contacts, and join rooms on remote servers; remote XMPP users can join dedicated XMPP rooms hosted by Rocket.Chat. It runs as the `xmpp-server-service` microservice and is configured under **Administration → Settings → Federation → XMPP Server (Native)**.
+
+### Patch Changes
+
+- ([#42341](https://github.com/RocketChat/Rocket.Chat/pull/42341)) Fixes HTML entity unescaping turning names like `&toString;` into function source and garbling numeric entities above U+FFFF, such as emoji, and fixes the string helpers throwing on symbols and turning `0` and `false` into empty strings
+
+## 0.4.0
+
+### Minor Changes
+
+- ([#41763](https://github.com/RocketChat/Rocket.Chat/pull/41763)) Drops `@rocket.chat/string-helpers` in favor of `@rocket.chat/tools`
+
+## 0.4.0-rc.0
+
+### Minor Changes
+
+- ([#41763](https://github.com/RocketChat/Rocket.Chat/pull/41763)) Drops `@rocket.chat/string-helpers` in favor of `@rocket.chat/tools`
+
+## 0.3.0
+
+### Minor Changes
+
+- ([#40096](https://github.com/RocketChat/Rocket.Chat/pull/40096)) Adds new function for censoring URL components in logs
+
+## 0.3.0-rc.0
+
+### Minor Changes
+
+- ([#40096](https://github.com/RocketChat/Rocket.Chat/pull/40096)) Adds new function for censoring URL components in logs
+
+## 0.2.5
+
+### Patch Changes
+
+- ([#38989](https://github.com/RocketChat/Rocket.Chat/pull/38989)) chore(eslint): Upgrades ESLint and its configuration
+
+## 0.2.5-rc.0
+
+### Patch Changes
+
+- ([#38989](https://github.com/RocketChat/Rocket.Chat/pull/38989)) chore(eslint): Upgrades ESLint and its configuration
+
+## 0.2.4
+
+### Patch Changes
+
+- ([#37852](https://github.com/RocketChat/Rocket.Chat/pull/37852) by [@lucas-a-pelegrino](https://github.com/lucas-a-pelegrino)) Adds improvements to the push notifications logic; the logic now truncates messages and titles larger than 240, and 65 characters respectively.
+
+## 0.2.4-rc.0
+
+### Patch Changes
+
+- ([#37852](https://github.com/RocketChat/Rocket.Chat/pull/37852)) Adds improvements to the push notifications logic; the logic now truncates messages and titles larger than 240, and 65 characters respectively.
+
+## 0.2.3
+
+### Patch Changes
+
+- ([#35006](https://github.com/RocketChat/Rocket.Chat/pull/35006)) Fixes the parsing of FreeSwitch events to properly generate a history of calls on Rocket.Chat
+
+## 0.2.3-rc.0
+
+### Patch Changes
+
+- ([#35006](https://github.com/RocketChat/Rocket.Chat/pull/35006)) Fixes the parsing of FreeSwitch events to properly generate a history of calls on Rocket.Chat
+
+## 0.2.2
+
+### Patch Changes
+
+- ([#32527](https://github.com/RocketChat/Rocket.Chat/pull/32527)) Fixed an inconsistent evaluation of the `Accounts_LoginExpiration` setting over the codebase. In some places, it was being used as milliseconds while in others as days. Invalid values produced different results. A helper function was created to centralize the setting validation and the proper value being returned to avoid edge cases.
+  Negative values may be saved on the settings UI panel but the code will interpret any negative, NaN or 0 value to the default expiration which is 90 days.
+
+## 0.2.2-rc.0
+
+### Patch Changes
+
+- ([#32527](https://github.com/RocketChat/Rocket.Chat/pull/32527)) Fixed an inconsistent evaluation of the `Accounts_LoginExpiration` setting over the codebase. In some places, it was being used as milliseconds while in others as days. Invalid values produced different results. A helper function was created to centralize the setting validation and the proper value being returned to avoid edge cases.
+  Negative values may be saved on the settings UI panel but the code will interpret any negative, NaN or 0 value to the default expiration which is 90 days.
+
+## 0.2.1
+
+### Patch Changes
+
+- ([#31138](https://github.com/RocketChat/Rocket.Chat/pull/31138)) feat(uikit): Move `@rocket.chat/ui-kit` package to the main monorepo
+
+## 0.2.1-rc.0
+
+### Patch Changes
+
+- b223cbde14: feat(uikit): Move `@rocket.chat/ui-kit` package to the main monorepo
+
+## 0.2.0
+
+### Minor Changes
+
+- 92613680b7: Added option to select between two script engine options for the integrations
+
+## 0.2.0-rc.0
+
+### Minor Changes
+
+- 92613680b7: Added option to select between two script engine options for the integrations
+
+## 0.1.0
+
+### Minor Changes
+
+- 1041d4d361: Added option to select between two script engine options for the integrations
+
+## 0.1.0-rc.0
+
+### Minor Changes
+
+- 1041d4d361: Added option to select between two script engine options for the integrations

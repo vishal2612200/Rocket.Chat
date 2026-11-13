@@ -1,0 +1,98 @@
+import { useStableCallback } from '@rocket.chat/fuselage-hooks';
+import { usePermission, useSetting, useUser } from '@rocket.chat/ui-contexts';
+import type { DragEvent, ReactNode } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useDropTarget } from './useDropTarget';
+import { roomCoordinator } from '../../../../lib/rooms/roomCoordinator';
+import { useIsRoomOverMacLimit } from '../../../omnichannel/hooks/useIsRoomOverMacLimit';
+import { useChat } from '../../contexts/ChatContext';
+import { useRoom, useRoomSubscription } from '../../contexts/RoomContext';
+
+export const useFileUploadDropTarget = (): readonly [
+	fileUploadTriggerProps: {
+		onDragEnter: (event: DragEvent<Element>) => void;
+		onDragLeave: (event: DragEvent<Element>) => void;
+	},
+	fileUploadOverlayProps: {
+		visible: boolean;
+		onDismiss: () => void;
+		enabled: boolean;
+		reason?: ReactNode;
+	},
+] => {
+	const room = useRoom();
+	const { triggerProps, overlayProps } = useDropTarget();
+
+	const isRoomOverMacLimit = useIsRoomOverMacLimit(room);
+
+	const { t } = useTranslation();
+
+	const fileUploadEnabled = useSetting('FileUpload_Enabled', true);
+	const user = useUser();
+	const postReadOnly = usePermission('post-readonly', room._id);
+	const fileUploadAllowedForUser = useMemo(
+		() => !roomCoordinator.readOnly(room, { username: user?.username }),
+		// oxlint-disable-next-line react-hooks/exhaustive-deps
+		[room, user?.username, postReadOnly],
+	);
+
+	const chat = useChat();
+	const subscription = useRoomSubscription();
+
+	const isEditing = useSyncExternalStore(
+		chat?.composer?.editing.subscribe ?? (() => () => undefined),
+		chat?.composer?.editing.get ?? (() => false),
+	);
+
+	const onFileDrop = useStableCallback(async (files: File[]) => {
+		const { getMimeType } = await import('../../../../../lib/mimeTypes');
+		const getUniqueFiles = () => {
+			const uniqueFiles: File[] = [];
+			const st: Set<string> = new Set();
+			files.forEach((file) => {
+				const key = `${file.name}-${file.size}-${file.lastModified}`;
+				if (!st.has(key)) {
+					uniqueFiles.push(file);
+					st.add(key);
+				}
+			});
+			return uniqueFiles;
+		};
+		const uniqueFiles = getUniqueFiles();
+
+		const uploads = Array.from(uniqueFiles).map((file) => {
+			Object.defineProperty(file, 'type', { value: getMimeType(file.type, file.name) });
+			return file;
+		});
+
+		chat?.flows.uploadFiles({ files: uploads });
+	});
+
+	const allOverlayProps = useMemo(() => {
+		if (!fileUploadEnabled || isRoomOverMacLimit) {
+			return {
+				enabled: false,
+				reason: t('FileUpload_Disabled'),
+				...overlayProps,
+			} as const;
+		}
+
+		if (!fileUploadAllowedForUser || !subscription || isEditing) {
+			return {
+				enabled: false,
+				reason: t('error-not-allowed'),
+				...overlayProps,
+			} as const;
+		}
+
+		return {
+			enabled: true,
+			onFileDrop,
+			...overlayProps,
+		} as const;
+	}, [isEditing, fileUploadAllowedForUser, fileUploadEnabled, isRoomOverMacLimit, onFileDrop, overlayProps, subscription, t]);
+
+	return [triggerProps, allOverlayProps] as const;
+};

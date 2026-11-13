@@ -1,0 +1,59 @@
+import { IconButton } from '@rocket.chat/fuselage';
+import { useStableCallback } from '@rocket.chat/fuselage-hooks';
+import { GenericModal, GenericTableCell } from '@rocket.chat/ui-client';
+import { useSetModal, useToastMessageDispatch } from '@rocket.chat/ui-contexts';
+import { useQueryClient } from '@tanstack/react-query';
+import type { MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useEndpointMutation } from '../../../hooks/useEndpointMutation';
+import { omnichannelQueryKeys } from '../../../lib/queryKeys';
+
+export type RemoveManagerButtonProps = { _id: string };
+
+const RemoveManagerButton = ({ _id }: RemoveManagerButtonProps) => {
+	const { t } = useTranslation();
+	const queryClient = useQueryClient();
+	const { mutateAsync: deleteAction } = useEndpointMutation('DELETE', '/v1/livechat/users/manager/:_id', {
+		keys: { _id },
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: omnichannelQueryKeys.managers() });
+		},
+	});
+	const setModal = useSetModal();
+	const dispatchToastMessage = useToastMessageDispatch();
+
+	const handleRemoveClick = useStableCallback(async () => {
+		await deleteAction();
+	});
+	const handleDelete = useStableCallback((e: MouseEvent) => {
+		e.stopPropagation();
+		const onDeleteManager = async (): Promise<void> => {
+			try {
+				await handleRemoveClick();
+				dispatchToastMessage({ type: 'success', message: t('Manager_removed') });
+			} catch (error: unknown) {
+				(typeof error === 'string' || error instanceof Error) && dispatchToastMessage({ type: 'error', message: error });
+			}
+			setModal();
+		};
+
+		setModal(
+			<GenericModal
+				variant='danger'
+				onConfirm={onDeleteManager}
+				onCancel={(): void => setModal()}
+				onClose={(): void => setModal()}
+				confirmText={t('Delete')}
+			/>,
+		);
+	});
+
+	return (
+		<GenericTableCell color='hint' truncate>
+			<IconButton size='small' icon='trash' title={t('Remove')} onClick={handleDelete} />
+		</GenericTableCell>
+	);
+};
+
+export default RemoveManagerButton;

@@ -1,0 +1,257 @@
+import { faker } from '@faker-js/faker';
+import type { Page } from '@playwright/test';
+
+import { createAuxContext } from './fixtures/createAuxContext';
+import { Users } from './fixtures/userStates';
+import { HomeChannel } from './page-objects';
+import { createTargetChannelAndReturnFullRoom, deleteChannel } from './utils';
+import { sendMessageFromUser } from './utils/sendMessage';
+import { expect, test } from './utils/test';
+
+test.use({ storageState: Users.user1.state });
+
+test.describe('Messaging', () => {
+	let channelPage: HomeChannel;
+	let targetChannel: string;
+
+	test.beforeAll(async ({ api, request }) => {
+		const { channel } = await createTargetChannelAndReturnFullRoom(api, { members: ['user1'] });
+		targetChannel = channel.name as string;
+
+		// Navigation and message edition tests need existing messages authored by user1.
+		const firstMessage = await sendMessageFromUser(request, Users.user1, channel._id, 'msg1');
+		expect(firstMessage.success).toBe(true);
+
+		const secondMessage = await sendMessageFromUser(request, Users.user1, channel._id, 'msg2');
+		expect(secondMessage.success).toBe(true);
+	});
+
+	test.beforeEach(async ({ page }) => {
+		channelPage = new HomeChannel(page);
+		await channelPage.goto();
+	});
+
+	test.afterAll(async ({ api }) => {
+		await deleteChannel(api, targetChannel);
+	});
+
+	test.describe.serial('Navigation', () => {
+		test.beforeEach(async () => {
+			await channelPage.navbar.openChat(targetChannel);
+			// wait for the room toolbox to mount, since it's a lazy loaded component
+			await channelPage.roomToolbar.waitFor();
+		});
+
+		test('should leave the room toolbar with Tab', async ({ page }) => {
+			const threadsAction = channelPage.roomHeaderToolbar.getByRole('button', { name: 'Threads', exact: true });
+			await threadsAction.focus();
+			await expect(threadsAction).toBeFocused();
+
+			await page.keyboard.press('Tab');
+
+			await expect(channelPage.content.lastUserMessage).toBeFocused();
+		});
+
+		test('should leave the room toolbar with Shift+Tab', async ({ page }) => {
+			const threadsAction = channelPage.roomHeaderToolbar.getByRole('button', { name: 'Threads', exact: true });
+			await threadsAction.focus();
+			await expect(threadsAction).toBeFocused();
+
+			await page.keyboard.press('Shift+Tab');
+
+			await expect(channelPage.getBtnOpenRoomInfo(targetChannel)).toBeFocused();
+		});
+
+		test('should open the user info from the message author name with the keyboard', async ({ page }) => {
+			await page.keyboard.press('Shift+Tab');
+			await page.keyboard.press('ArrowUp');
+			await page.keyboard.press('Tab');
+			await page.keyboard.press('Space');
+
+			await channelPage.tabs.userInfo.waitForDisplay();
+		});
+
+		test('should not restore focus on the last focused if it was triggered by click', async ({ page }) => {
+			await channelPage.content.getMessageByText('msg1').click();
+
+			await channelPage.composer.inputMessage.click();
+			await page.keyboard.press('Shift+Tab');
+
+			await expect(channelPage.content.getMessageByText('msg2')).toBeFocused();
+		});
+
+		test('should not focus on the last message when focusing by click', async () => {
+			await channelPage.content.getMessageByText('msg1').click();
+
+			await expect(channelPage.content.lastUserMessage).not.toBeFocused();
+		});
+
+		test('should focus the latest message when moving the focus on the list and theres no previous focus', async ({ page }) => {
+			await channelPage.getBtnOpenRoomInfo(targetChannel).focus();
+			await expect(channelPage.getBtnOpenRoomInfo(targetChannel)).toBeFocused();
+
+			await test.step('move focus to the list', async () => {
+				await page.keyboard.press('Tab');
+				await page.keyboard.press('Tab');
+				await expect(channelPage.content.lastUserMessage).toBeFocused();
+			});
+
+			await test.step('move focus to the list again', async () => {
+				await channelPage.getBtnOpenRoomInfo(targetChannel).focus();
+				await expect(channelPage.getBtnOpenRoomInfo(targetChannel)).toBeFocused();
+				await page.keyboard.press('Tab');
+				await page.keyboard.press('Tab');
+				await expect(channelPage.content.lastUserMessage).toBeFocused();
+			});
+		});
+	});
+
+	test.describe.serial('Message edition', () => {
+		test('should edit messages', async ({ page }) => {
+			const waitForEdit = () =>
+				page.waitForResponse(
+					(response) => /api\/v1\/chat.update/.test(response.url()) && response.status() === 200 && response.request().method() === 'POST',
+				);
+
+			await channelPage.navbar.openChat(targetChannel);
+
+			await test.step('send messages to edit', async () => {
+				await channelPage.content.sendMessage('msg1');
+				await channelPage.content.sendMessage('msg2');
+			});
+
+			await test.step('focus on the second message', async () => {
+				await expect(channelPage.composer.inputMessage).toBeFocused();
+				await page.keyboard.press('ArrowUp');
+
+				await expect(channelPage.composer.inputMessage).toHaveValue('msg2');
+			});
+
+			await test.step('send edited message', async () => {
+				await Promise.all([waitForEdit(), channelPage.content.sendMessage('edited msg2', false)]);
+
+				await expect(channelPage.content.lastUserMessageBody).toHaveText('edited msg2');
+			});
+
+			await test.step('stress test on message editions', async () => {
+				for (const element of ['edited msg2 a', 'edited msg2 b', 'edited msg2 c', 'edited msg2 d', 'edited msg2 e']) {
+					await expect(channelPage.composer.inputMessage).toBeFocused();
+					await page.keyboard.press('ArrowUp');
+					await expect(channelPage.composer.inputMessage).not.toHaveValue('');
+
+					await Promise.all([waitForEdit(), channelPage.content.sendMessage(element, false)]);
+					await expect(channelPage.content.lastUserMessageBody).toHaveText(element);
+				}
+			});
+		});
+	});
+
+	test.describe('Message by "chat.postMessage" API method', () => {
+		test('expect show a message', async ({ api }) => {
+			const messageText = faker.lorem.sentence();
+
+			await channelPage.navbar.openChat(targetChannel);
+
+			await api.post('/chat.postMessage', {
+				channel: targetChannel,
+				text: messageText,
+			});
+
+			await expect(channelPage.content.lastUserMessageBody).toHaveText(messageText);
+		});
+
+		test('expect show attachment text', async ({ api }) => {
+			const messageText = faker.lorem.sentence();
+			const attachmentText = faker.lorem.sentence();
+
+			await channelPage.navbar.openChat(targetChannel);
+
+			await api.post('/chat.postMessage', {
+				channel: targetChannel,
+				text: messageText,
+				attachments: [
+					{
+						text: attachmentText,
+					},
+				],
+			});
+
+			await expect(channelPage.content.lastUserMessageAttachment).toHaveText(attachmentText);
+		});
+
+		test('expect show attachment text with emoji', async ({ api }) => {
+			const messageText = faker.lorem.sentence();
+			const attachmentText = faker.lorem.sentence();
+
+			await channelPage.navbar.openChat(targetChannel);
+
+			await api.post('/chat.postMessage', {
+				channel: targetChannel,
+				text: messageText,
+				attachments: [
+					{
+						text: `${attachmentText} :sunglasses: `,
+					},
+				],
+			});
+
+			await expect(channelPage.content.lastUserMessageAttachment).toHaveText(`${attachmentText} \ud83d\ude0e `);
+		});
+
+		test('expect show attachment text without emoji inside code block', async ({ api }) => {
+			const messageText = faker.lorem.sentence();
+			const attachmentText = faker.lorem.sentence();
+
+			await channelPage.navbar.openChat(targetChannel);
+
+			await api.post('/chat.postMessage', {
+				channel: targetChannel,
+				text: messageText,
+				attachments: [
+					{
+						text: `\`\`\`${attachmentText} B) \`\`\``,
+					},
+				],
+			});
+
+			await expect(channelPage.content.lastUserMessageAttachment).toHaveText(`${attachmentText} B) `);
+		});
+	});
+
+	test.describe('Both contexts', () => {
+		let auxContext: { page: Page; poHomeChannel: HomeChannel };
+		test.beforeEach(async ({ browser }) => {
+			const { page } = await createAuxContext(browser, Users.user2);
+			auxContext = { page, poHomeChannel: new HomeChannel(page) };
+		});
+
+		test.afterEach(async () => {
+			await auxContext.page.close();
+		});
+
+		test('expect show "hello word" in both contexts (targetChannel)', async () => {
+			await channelPage.navbar.openChat(targetChannel);
+
+			await auxContext.poHomeChannel.navbar.openChat(targetChannel);
+
+			await channelPage.content.sendMessage('hello world');
+
+			await expect(async () => {
+				await expect(auxContext.poHomeChannel.content.lastUserMessageBody).toHaveText('hello world');
+				await expect(channelPage.content.lastUserMessageBody).toHaveText('hello world');
+			}).toPass();
+		});
+
+		test('expect show "hello word" in both contexts (direct)', async () => {
+			await channelPage.navbar.openChat('user2');
+			await auxContext.poHomeChannel.navbar.openChat('user1');
+
+			await channelPage.content.sendMessage('hello world');
+
+			await expect(async () => {
+				await expect(channelPage.content.lastUserMessageBody).toHaveText('hello world');
+				await expect(auxContext.poHomeChannel.content.lastUserMessageBody).toHaveText('hello world');
+			}).toPass();
+		});
+	});
+});

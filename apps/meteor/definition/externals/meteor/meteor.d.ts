@@ -1,0 +1,181 @@
+import 'meteor/meteor';
+import type { IUser } from '@rocket.chat/core-typings';
+import type { ServerMethods } from '@rocket.chat/ddp-client';
+import type { DDPCommon, IStreamerConstructor, IStreamer } from 'meteor/ddp-common';
+
+type StringifyBuffers<T extends unknown[]> = {
+	[P in keyof T]: T[P] extends Buffer ? string : T[P];
+};
+
+declare module 'meteor/meteor' {
+	namespace Meteor {
+		const Streamer: IStreamerConstructor & IStreamer;
+
+		interface ErrorStatic {
+			new (error: string | number, reason?: string, details?: any): Error;
+		}
+
+		interface Error extends globalThis.Error {
+			error: string | number;
+			reason?: string;
+		}
+
+		interface Device {
+			isDesktop(): boolean;
+			isPhone(): boolean;
+		}
+
+		const server: {
+			options: { disconnectGracePeriod: number };
+			sessions: Map<string, { userId: string; heartbeat: DDPCommon.Heartbeat; connectionHandle: Meteor.Connection }>;
+			publish_handlers: {
+				meteor_autoupdate_clientVersions(): void;
+			};
+		};
+
+		function userAsync(): Promise<IUser | null>;
+
+		interface MethodThisType {
+			twoFactorChecked: boolean | undefined;
+		}
+
+		interface IDDPMessage {
+			msg: 'method';
+			method: string;
+			params: EJSON[];
+			id: string;
+		}
+
+		interface IDDPUpdatedMessage {
+			msg: 'updated';
+			methods: string[];
+		}
+
+		interface IDDPStream {
+			eventCallbacks: {
+				message: Array<(data: string) => void>;
+				reset: Array<() => void>;
+				disconnect: Array<() => void>;
+			};
+			socket?: {
+				onmessage: (data: { type: string; data: string }) => void;
+				_didMessage: (data: string) => void;
+				send: (data: string) => void;
+			};
+			_launchConnectionAsync?: () => void;
+			on: {
+				(key: 'message', callback: (data: string) => void): void;
+				(key: 'reset', callback: () => void): void;
+				(key: 'disconnect', callback: () => void): void;
+			};
+			disconnect(options?: { _permanent?: boolean; _error?: unknown }): void;
+
+			currentStatus: {
+				status: string;
+				connected: boolean;
+				retryCount: number;
+				retryTime?: number;
+				reason?: string;
+			};
+			statusListeners?: { changed(): void };
+			forEachCallback(name: string, cb: (callback: (...args: unknown[]) => void) => void): void;
+			send(data: string): void;
+			status(): IDDPStream['currentStatus'];
+			statusChanged(): void;
+			reconnect(options?: unknown): void;
+			disconnect(options?: { _permanent?: boolean; _error?: unknown }): void;
+			_lostConnection(error?: unknown): void;
+		}
+
+		interface IMeteorConnection {
+			httpHeaders: Record<string, any>;
+			referer: string;
+			clientAddress: string;
+			_send(message: IDDPMessage): void;
+
+			_methodInvokers: Record<string, any>;
+			_subsBeingRevived: Record<string, unknown>;
+			_methodsBlockingQuiescence: Record<string, unknown>;
+			_messagesBufferedUntilQuiescence: unknown[];
+			_outstandingMethodBlocks: unknown[];
+
+			_livedata_data(message: IDDPUpdatedMessage): void;
+
+			_stream: IDDPStream | undefined;
+
+			// Updated: onMessage is now inside _streamHandlers
+			_streamHandlers: {
+				onMessage(message: string): void;
+				onReset(): void;
+			};
+
+			status(): {
+				connected: boolean;
+				retryCount?: number;
+				retryTime?: number;
+				status: 'connected' | 'connecting' | 'failed' | 'waiting' | 'offline';
+				reconnect: () => void;
+			};
+
+			subscribe(
+				id: string,
+				name: string,
+				...args: [
+					...unknown,
+					callbacks?: {
+						onReady?: (...args: any[]) => void;
+						onStop?: (error?: Error) => void;
+						onError?: (error: Error) => void;
+					},
+				]
+			): SubscriptionHandle;
+
+			call(methodName: string, ...args: [...unknown, callback?: (error: Error | null, result: unknown) => void]): void;
+
+			setUserId(uid: string | null): void;
+		}
+
+		const connection: IMeteorConnection;
+
+		function _relativeToSiteRootUrl(path: string): string;
+		const _localStorage: Window['localStorage'];
+
+		function methods<TServerMethods extends ServerMethods>(methods: {
+			[TMethodName in keyof TServerMethods]?: (
+				this: MethodThisType,
+				...args: StringifyBuffers<Parameters<TServerMethods[TMethodName]>>
+			) => ReturnType<TServerMethods[TMethodName]> | Promise<ReturnType<TServerMethods[TMethodName]>>;
+		}): void;
+
+		const AppCache:
+			| {
+					config: (config: { onlineOnly: string[] }) => void;
+			  }
+			| undefined;
+
+		function _isPromise(obj: unknown): obj is Promise<unknown>;
+
+		function _runFresh(func: () => void): void;
+
+		class _SynchronousQueue {
+			queueTask(arg0: () => void): void;
+
+			drain(): unknown;
+		}
+
+		interface UserServices {
+			totp?: {
+				enabled: boolean;
+				hashedBackup: string[];
+				secret: string;
+				tempSecret?: string;
+			};
+		}
+	}
+}
+
+declare module 'meteor/meteor' {
+	var Meteor: {
+		[key: `loginWith${string}`]: any;
+	};
+}

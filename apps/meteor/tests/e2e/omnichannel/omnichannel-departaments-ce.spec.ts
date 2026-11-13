@@ -1,0 +1,39 @@
+import { faker } from '@faker-js/faker';
+
+import { IS_EE } from '../config/constants';
+import { Users } from '../fixtures/userStates';
+import { OmnichannelDepartments } from '../page-objects/omnichannel';
+import { test, expect } from '../utils/test';
+
+test.use({ storageState: Users.admin.state });
+
+test.describe.serial('OC - Manage Departments (CE)', () => {
+	test.skip(IS_EE, 'Community Edition Only');
+	let poOmnichannelDepartments: OmnichannelDepartments;
+	let departmentName: string;
+
+	test.beforeAll(async () => {
+		departmentName = faker.string.uuid();
+	});
+
+	test.beforeEach(async ({ page }) => {
+		poOmnichannelDepartments = new OmnichannelDepartments(page);
+		await poOmnichannelDepartments.goto();
+	});
+
+	test('OC - Manage Departments (CE) - Create department', async () => {
+		await test.step('expect create new department', async () => {
+			await poOmnichannelDepartments.createNew();
+			await poOmnichannelDepartments.createDepartment(departmentName, faker.internet.email());
+
+			await poOmnichannelDepartments.inputSearch.fill(departmentName);
+			await expect(poOmnichannelDepartments.table.findRowByName(departmentName)).toBeVisible();
+		});
+
+		await test.step('expect to not be possible adding a second department ', async () => {
+			await poOmnichannelDepartments.createNew();
+			await poOmnichannelDepartments.upsellDepartmentsModal.waitForDisplay();
+			await poOmnichannelDepartments.upsellDepartmentsModal.close();
+		});
+	});
+});

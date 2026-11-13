@@ -1,0 +1,244 @@
+import type { Credentials } from '@rocket.chat/api-client';
+import type { IUser } from '@rocket.chat/core-typings';
+import { UserStatus } from '@rocket.chat/core-typings';
+import supertest from 'supertest';
+import type { Response } from 'supertest';
+
+import { api, assertSuccess, credentials, methodCall, request } from './api-data';
+import { password } from './user';
+
+export type TestUser<TUser extends IUser> = TUser & { username: string; emails: string[] };
+
+/**
+ * Configuration interface for custom request handling.
+ *
+ * Provides a way to override the default request instance and credentials
+ * for testing scenarios that require custom domains or authentication.
+ */
+export interface IRequestConfig {
+	credentials: Credentials;
+	request: ReturnType<typeof supertest>;
+}
+
+/**
+ * Creates a request configuration for a specific domain.
+ *
+ * Sets up a new request instance and authenticates with the specified
+ * domain, user, and password. This is essential for federation testing
+ * where multiple Rocket.Chat instances need to be accessed.
+ *
+ * @param domain - The base URL of the Rocket.Chat instance
+ * @param user - The username for authentication
+ * @param password - The password for authentication
+ * @returns Promise resolving to request configuration with credentials
+ */
+export async function getRequestConfig(domain: string, user: string, password: string): Promise<IRequestConfig> {
+	const request = supertest(domain);
+	const credentials = await login(user, password, { request, credentials: {} as Credentials });
+
+	return {
+		credentials,
+		request,
+	};
+}
+
+export const createUser = <TUser extends IUser>(
+	userData: {
+		username?: string;
+		email?: string;
+		roles?: string[];
+		active?: boolean;
+		joinDefaultChannels?: boolean;
+		verified?: boolean;
+		requirePasswordChange?: boolean;
+		name?: string;
+		password?: string;
+		sipExtension?: string;
+		bio?: string;
+		nickname?: string;
+	} = {},
+	config?: IRequestConfig,
+) =>
+	new Promise<TestUser<TUser>>((resolve, reject) => {
+		const username = userData.username || `user.test.${Date.now()}.${Math.random()}`;
+		const email = userData.email || `${username}@rocket.chat`;
+		const requestInstance = config?.request || request;
+		const credentialsInstance = config?.credentials || credentials;
+
+		void requestInstance
+			.post(api('users.create'))
+			.set(credentialsInstance)
+			.send({ email, name: username, username, password, ...userData })
+			.end((err: unknown, res: Response) => {
+				if (err) {
+					return reject(err);
+				}
+				if (!res.body?.user) {
+					return reject(new Error(`users.create failed for "${username}" with status ${res.status}: ${JSON.stringify(res.body)}`));
+				}
+				resolve(res.body.user);
+			});
+	});
+
+export const login = (username: string | undefined, password: string, config?: IRequestConfig): Promise<Credentials> =>
+	new Promise((resolve, reject) => {
+		const requestInstance = config?.request || request;
+		void requestInstance
+			.post(api('login'))
+			.send({
+				user: username,
+				password,
+			})
+			.end((err: unknown, res: Response) => {
+				if (err) {
+					return reject(err);
+				}
+				if (!res.body?.data?.authToken) {
+					return reject(new Error(`login failed for "${username}" with status ${res.status}: ${JSON.stringify(res.body)}`));
+				}
+				resolve({
+					'X-Auth-Token': res.body.data.authToken,
+					'X-User-Id': res.body.data.userId,
+				});
+			});
+	});
+
+const requestUserDeletion = (user: Pick<IUser, '_id'>, extraData: Record<string, unknown>, config?: IRequestConfig) =>
+	(config?.request || request)
+		.post(api('users.delete'))
+		.set(config?.credentials || credentials)
+		.send({ userId: user._id, ...extraData });
+
+/**
+ * @throws {RequestFailedError} when the user is not deleted
+ */
+export const deleteUser = async (user: Pick<IUser, '_id'>, extraData = {}, config?: IRequestConfig) =>
+	assertSuccess('users.delete', await requestUserDeletion(user, extraData, config));
+
+/**
+ * Cleanup for users a test may already have deleted itself.
+ *
+ * @throws {RequestFailedError} when the user exists and is not deleted
+ */
+export const deleteUserIfExists = async (user: Pick<IUser, '_id'>, extraData = {}, config?: IRequestConfig) => {
+	const res = await requestUserDeletion(user, extraData, config);
+
+	if (res.status === 400 && res.body?.errorType === 'error-invalid-user') {
+		return;
+	}
+
+	assertSuccess('users.delete', res);
+};
+
+/**
+ * @throws {RequestFailedError} when the user does not exist or cannot be fetched
+ */
+export const getUserByUsername = async <TUser extends IUser>(username: string, config?: IRequestConfig): Promise<TestUser<TUser>> => {
+	const requestInstance = config?.request || request;
+	const credentialsInstance = config?.credentials || credentials;
+
+	const res = await requestInstance.get(api('users.info')).query({ username }).set(credentialsInstance);
+
+	return assertSuccess('users.info', res).body.user;
+};
+
+/**
+ * Like {@link getUserByUsername}, for users that may legitimately not exist.
+ *
+ * @throws {RequestFailedError} when the lookup fails for any reason other than the user not existing
+ */
+export const findUserByUsername = async <TUser extends IUser>(
+	username: string,
+	config?: IRequestConfig,
+): Promise<TestUser<TUser> | undefined> => {
+	const requestInstance = config?.request || request;
+	const credentialsInstance = config?.credentials || credentials;
+
+	const res = await requestInstance.get(api('users.info')).query({ username }).set(credentialsInstance);
+
+	if (res.status === 400 && res.body?.error === 'User not found.') {
+		return undefined;
+	}
+
+	return assertSuccess('users.info', res).body.user;
+};
+
+export const getMe = <TUser extends IUser>(overrideCredential = credentials, config?: IRequestConfig) =>
+	new Promise<TestUser<TUser>>((resolve) => {
+		const requestInstance = config?.request || request;
+		const credentialsInstance = config?.credentials || overrideCredential;
+		void requestInstance
+			.get(api('me'))
+			.set(credentialsInstance)
+			.expect('Content-Type', 'application/json')
+			.expect(200)
+			.end((_end: unknown, res: Response) => {
+				resolve(res.body);
+			});
+	});
+
+export const setUserActiveStatus = (userId: IUser['_id'], activeStatus = true, config?: IRequestConfig) =>
+	new Promise((resolve) => {
+		const requestInstance = config?.request || request;
+		const credentialsInstance = config?.credentials || credentials;
+
+		void requestInstance
+			.post(api('users.setActiveStatus'))
+			.set(credentialsInstance)
+			.send({
+				userId,
+				activeStatus,
+			})
+			.end(resolve);
+	});
+
+export const setUserStatus = (overrideCredentials = credentials, status = UserStatus.ONLINE, config?: IRequestConfig) => {
+	const requestInstance = config?.request || request;
+	return requestInstance.post(api('users.setStatus')).set(overrideCredentials).send({
+		message: '',
+		status,
+	});
+};
+
+export const setUserAway = (overrideCredentials = credentials, config?: IRequestConfig) => {
+	const requestInstance = config?.request || request;
+	return requestInstance
+		.post(methodCall('UserPresence:away'))
+		.set(overrideCredentials)
+		.send({
+			message: JSON.stringify({
+				method: 'UserPresence:away',
+				params: [],
+				id: 'id',
+				msg: 'method',
+			}),
+		});
+};
+
+export const setUserOnline = (overrideCredentials = credentials, config?: IRequestConfig) => {
+	const requestInstance = config?.request || request;
+	return requestInstance
+		.post(methodCall('UserPresence:online'))
+		.set(overrideCredentials)
+		.send({
+			message: JSON.stringify({
+				method: 'UserPresence:online',
+				params: [],
+				id: 'id',
+				msg: 'method',
+			}),
+		});
+};
+
+export const removeRoleFromUser = (username: string, roleId: string, overrideCredentials = credentials, config?: IRequestConfig) =>
+	getUserByUsername(username, config).then((user) => {
+		const requestInstance = config?.request || request;
+		return requestInstance
+			.post(api('users.update'))
+			.set(overrideCredentials)
+			.send({
+				userId: user._id,
+				data: { roles: user.roles.filter((role) => role !== roleId) },
+			})
+			.expect(200);
+	});

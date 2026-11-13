@@ -1,0 +1,100 @@
+import { after, before, describe, it } from 'node:test';
+
+import type { Credentials } from '@rocket.chat/api-client';
+import type { IUser } from '@rocket.chat/core-typings';
+import { expect } from 'chai';
+
+import { getCredentials, api, request, credentials } from '../../data/api-data';
+import { password } from '../../data/user';
+import type { TestUser } from '../../data/users.helper';
+import { createUser, deleteUser, login } from '../../data/users.helper';
+
+describe('licenses', () => {
+	let createdUser: TestUser<IUser>;
+
+	before((_t, done) => getCredentials(done));
+	let unauthorizedUserCredentials: Credentials;
+
+	before(async () => {
+		createdUser = await createUser();
+		unauthorizedUserCredentials = await login(createdUser.username, password);
+	});
+
+	after(() => deleteUser(createdUser));
+
+	describe('[/licenses.add]', () => {
+		it('should fail if not logged in', async () => {
+			const res = await request
+				.post(api('licenses.add'))
+				.send({
+					license: '',
+				})
+				.expect('Content-Type', 'application/json')
+				.expect(401);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body).to.have.property('error', 'You must be logged in to do this.');
+		});
+
+		it('should fail if user is unauthorized', async () => {
+			const res = await request
+				.post(api('licenses.add'))
+				.set(unauthorizedUserCredentials)
+				.send({
+					license: '',
+				})
+				.expect('Content-Type', 'application/json')
+				.expect(403);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body).to.have.property('errorType', 'error-forbidden');
+		});
+
+		it('should fail if license is invalid', async () => {
+			const res = await request
+				.post(api('licenses.add'))
+				.set(credentials)
+				.send({
+					license: '',
+				})
+				.expect('Content-Type', 'application/json')
+				.expect(400);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body).to.have.property('error');
+		});
+	});
+
+	describe('[/licenses.info]', () => {
+		it('should fail if not logged in', async () => {
+			const res = await request.get(api('licenses.info')).expect('Content-Type', 'application/json').expect(401);
+
+			expect(res.body).to.have.property('success', false);
+			expect(res.body).to.have.property('error', 'You must be logged in to do this.');
+		});
+
+		it('should return limited information if user is unauthorized', async () => {
+			const res = await request
+				.get(api('licenses.info'))
+				.set(unauthorizedUserCredentials)
+				.expect('Content-Type', 'application/json')
+				.expect(200);
+
+			expect(res.body).to.have.property('success', true);
+			expect(res.body).to.have.property('license').and.to.be.an('object');
+			expect(res.body.license).to.not.have.property('license');
+			expect(res.body.license).to.have.property('tags').and.to.be.an('array');
+		});
+
+		it('should return unrestricted info if user is logged in and is authorized', async () => {
+			const res = await request.get(api('licenses.info')).set(credentials).expect(200);
+
+			expect(res.body).to.have.property('success', true);
+			expect(res.body).to.have.property('license').and.to.be.an('object');
+			if (process.env.IS_EE) {
+				expect(res.body.license).to.have.property('license').and.to.be.an('object');
+			}
+			expect(res.body.license).to.have.property('tags').and.to.be.an('array');
+		});
+	});
+});

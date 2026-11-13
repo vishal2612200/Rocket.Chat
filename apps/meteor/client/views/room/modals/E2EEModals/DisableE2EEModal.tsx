@@ -1,0 +1,52 @@
+import { Accordion, AccordionItem, Box, Button } from '@rocket.chat/fuselage';
+import { GenericModal } from '@rocket.chat/ui-client';
+import { Trans, useTranslation } from 'react-i18next';
+
+export type DisableE2EEModalProps = {
+	onConfirm: () => void;
+	onCancel: () => void;
+	roomType: string;
+	canResetRoomKey: boolean;
+	onResetRoomKey: () => void;
+};
+
+const DisableE2EEModal = ({ onConfirm, onCancel, roomType, canResetRoomKey, onResetRoomKey }: DisableE2EEModalProps) => {
+	const { t } = useTranslation();
+
+	return (
+		<GenericModal
+			icon='key'
+			title={t('E2E_disable_encryption')}
+			variant='warning'
+			confirmText={t('E2E_disable_encryption')}
+			onConfirm={onConfirm}
+			onCancel={onCancel}
+			onDismiss={() => undefined}
+			annotation={t('Proceed_with_caution')}
+		>
+			<Box marginBlockEnd={16} is='p'>
+				<Trans i18nKey='E2E_disable_encryption_description' tOptions={{ roomType }} />
+			</Box>
+
+			{canResetRoomKey && (
+				<>
+					<Box marginBlockEnd={16} is='p'>
+						{t('E2E_disable_encryption_reset_keys_description')}
+					</Box>
+					<Accordion>
+						<AccordionItem title={t('E2E_reset_encryption_keys')}>
+							<Box marginBlockEnd={16} is='p'>
+								{t('E2E_reset_encryption_keys_description')}
+							</Box>
+							<Button variant='secondary-danger' size='small' onClick={onResetRoomKey}>
+								{t('E2E_reset_encryption_keys_button', { roomType })}
+							</Button>
+						</AccordionItem>
+					</Accordion>
+				</>
+			)}
+		</GenericModal>
+	);
+};
+
+export default DisableE2EEModal;

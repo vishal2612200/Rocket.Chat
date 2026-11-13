@@ -1,0 +1,85 @@
+import { Box, Icon, Button, Divider, Option } from '@rocket.chat/fuselage';
+import { useOutsideClick } from '@rocket.chat/fuselage-hooks';
+import { type ComponentProps, useRef, useState, type ChangeEvent } from 'react';
+
+import { formatDate } from '../../../utils/formatDate';
+import EditableLabel from '../EditableLabel/EditableLabel';
+
+const EditMenu = ({
+	name,
+	date,
+	onChange,
+	onBlur,
+	onDuplicate,
+	onDelete,
+	labelProps,
+}: {
+	name: string;
+	date: string;
+	onChange: (e: ChangeEvent<HTMLInputElement>) => void;
+	onDuplicate?: () => void;
+	onDelete?: () => void;
+	onBlur: () => void;
+	labelProps?: ComponentProps<typeof EditableLabel>;
+}) => {
+	const [isOpen, setIsOpen] = useState(false);
+	const buttonRef = useRef<HTMLButtonElement>(null);
+	const containerRef = useRef<HTMLDivElement>(null);
+	useOutsideClick([containerRef], () => {
+		setIsOpen(false);
+		onBlur();
+	});
+
+	const duplicatehandler = (e: { stopPropagation: () => void }) => {
+		e.stopPropagation();
+		setIsOpen(false);
+		onDuplicate?.();
+	};
+
+	const deleteHandler = (e: { stopPropagation: () => void }) => {
+		e.stopPropagation();
+		setIsOpen(false);
+		onDelete?.();
+	};
+	return (
+		<Box
+			position='absolute'
+			insetBlockStart='10px'
+			insetInlineEnd='10px'
+			zIndex={100}
+			ref={containerRef}
+			className='rc-edit-menu'
+			onClick={(e) => {
+				e.stopPropagation();
+				setIsOpen(true);
+			}}
+		>
+			<Button ref={buttonRef} square size='mini'>
+				<Icon name='cog' size='x16' />
+			</Button>
+			{isOpen && (
+				<Box position='absolute'>
+					<Box elevation='1' paddingBlock='x8' backgroundColor='white'>
+						<Box marginInline='x8'>
+							<EditableLabel value={name} onChange={onChange} onBlur={onBlur} {...labelProps} />
+							<Box withTruncatedText marginBlockStart='x4' fontScale='p2'>
+								{formatDate(date)}
+							</Box>
+						</Box>
+						<Box paddingBlockStart={4}>
+							<Divider />
+						</Box>
+						<Option disabled={!onDuplicate} onClick={duplicatehandler}>
+							Duplicate
+						</Option>
+						<Option disabled={!onDelete} onClick={deleteHandler}>
+							Delete
+						</Option>
+					</Box>
+				</Box>
+			)}
+		</Box>
+	);
+};
+
+export default EditMenu;

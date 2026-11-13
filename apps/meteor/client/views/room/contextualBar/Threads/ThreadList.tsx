@@ -1,0 +1,194 @@
+import type { IMessage, IThreadMainMessage } from '@rocket.chat/core-typings';
+import { Box, Select, Callout, Throbber } from '@rocket.chat/fuselage';
+import { useResizeObserver, useAutoFocus, useLocalStorage, useDebouncedValue } from '@rocket.chat/fuselage-hooks';
+import {
+	VirtualizedScrollbars,
+	ContextualbarClose,
+	ContextualbarContent,
+	ContextualbarHeader,
+	ContextualbarIcon,
+	ContextualbarTitle,
+	ContextualbarEmptyContent,
+	ContextualbarSection,
+	ContextualbarDialog,
+} from '@rocket.chat/ui-client';
+import { useUserId, useRoomToolbox } from '@rocket.chat/ui-contexts';
+import type { ChangeEvent } from 'react';
+import { useMemo, useState, useCallback, useId } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Virtuoso } from 'react-virtuoso';
+
+import ThreadListItem from './components/ThreadListItem';
+import { useThreadsList } from './hooks/useThreadsList';
+import { FilterBar, FilterBarFilters, FilterBarSearch } from '../../../../components/FilterBar';
+import ResultsLiveRegion from '../../../../components/ResultsLiveRegion';
+import { useMessageRowListNavigation } from '../../../../hooks/useMessageRowListNavigation';
+import { getErrorMessage } from '../../../../lib/errorHandling';
+import { useRoom, useRoomSubscription } from '../../contexts/RoomContext';
+import { useGoToThread } from '../../hooks/useGoToThread';
+
+type ThreadType = 'all' | 'following' | 'unread';
+
+// TODO: Refactor this component to isolate the data from the visual
+const ThreadList = () => {
+	const { t } = useTranslation();
+	const threadListId = useId();
+	const threadListRef = useMessageRowListNavigation();
+
+	const { closeTab } = useRoomToolbox();
+
+	const handleTabBarCloseButtonClick = useCallback(() => {
+		closeTab();
+	}, [closeTab]);
+
+	const { ref, contentBoxSize: { inlineSize = 378, blockSize = 1 } = {} } = useResizeObserver<HTMLElement>({
+		debounceDelay: 200,
+	});
+
+	const autoFocusRef = useAutoFocus<HTMLInputElement>(true);
+
+	const [searchText, setSearchText] = useState('');
+
+	const handleSearchTextChange = useCallback(
+		(event: ChangeEvent<HTMLInputElement>) => {
+			setSearchText(event.currentTarget.value);
+		},
+		[setSearchText],
+	);
+
+	const typeOptions: (readonly [type: ThreadType, label: string])[] = useMemo(
+		() => [
+			['all', t('All')],
+			['following', t('Following')],
+			['unread', t('Unread')],
+		],
+		[t],
+	);
+
+	const [type, setType] = useLocalStorage<ThreadType>('thread-list-type', 'all');
+
+	const handleTypeChange = useCallback(
+		(type: string) => {
+			const typeOption = typeOptions.find(([t]) => t === type);
+			if (typeOption) setType(typeOption[0]);
+		},
+		[setType, typeOptions],
+	);
+
+	const room = useRoom();
+	const rid = room._id;
+	const subscription = useRoomSubscription();
+	const subscribed = !!subscription;
+	const uid = useUserId();
+	const tunread = subscription?.tunread?.sort().join(',');
+	const text = useDebouncedValue(searchText, 400);
+	const options = useDebouncedValue(
+		useMemo(() => {
+			if (type === 'all' || !subscribed || !uid) {
+				return {
+					rid,
+					text,
+				};
+			}
+			switch (type) {
+				case 'following':
+					return {
+						rid,
+						text,
+						type,
+						uid,
+					};
+				case 'unread':
+					return {
+						rid,
+						text,
+						type,
+						tunread: tunread?.split(','),
+					};
+			}
+		}, [rid, subscribed, text, tunread, type, uid]),
+		300,
+	);
+
+	const { isPending, error, isSuccess, data, fetchNextPage } = useThreadsList(options);
+
+	const items = data?.items || [];
+	const itemCount = data?.itemCount ?? 0;
+
+	const goToThread = useGoToThread({ replace: true });
+	const handleThreadClick = useCallback(
+		(tmid: IMessage['_id']) => {
+			goToThread({ rid, tmid });
+		},
+		[rid, goToThread],
+	);
+
+	return (
+		<ContextualbarDialog>
+			<ContextualbarHeader>
+				<ContextualbarIcon name='thread' />
+				<ContextualbarTitle>{t('Threads')}</ContextualbarTitle>
+				<ContextualbarClose onClick={handleTabBarCloseButtonClick} />
+			</ContextualbarHeader>
+			<ContextualbarSection>
+				<FilterBar compact>
+					<FilterBarSearch
+						aria-label={t('Search_Messages')}
+						aria-controls={isSuccess ? threadListId : undefined}
+						placeholder={t('Search_Messages')}
+						ref={autoFocusRef}
+						value={searchText}
+						onChange={handleSearchTextChange}
+					/>
+					<FilterBarFilters>
+						<Select aria-label={t('Filter')} options={typeOptions} value={type} onChange={(value) => handleTypeChange(String(value))} />
+					</FilterBarFilters>
+				</FilterBar>
+			</ContextualbarSection>
+			<ContextualbarContent flush ref={ref}>
+				<ResultsLiveRegion shouldAnnounce={isSuccess} itemCount={itemCount} />
+				{isPending && (
+					<Box paddingInline={24} paddingBlock={12}>
+						<Throbber size='x12' />
+					</Box>
+				)}
+				{error && (
+					<Box paddingInline={24}>
+						<Callout type='danger'>{getErrorMessage(error, t('Something_went_wrong'))}</Callout>
+					</Box>
+				)}
+				{isSuccess && (
+					<Box id={threadListId} ref={threadListRef} width='full' height='full' overflow='hidden' flexShrink={1}>
+						{items.length === 0 && <ContextualbarEmptyContent title={t('No_Threads')} />}
+						{items.length > 0 && (
+							<VirtualizedScrollbars>
+								<Virtuoso
+									style={{
+										height: blockSize,
+										width: inlineSize,
+									}}
+									totalCount={itemCount}
+									endReached={() => fetchNextPage()}
+									overscan={25}
+									data={items}
+									itemContent={(_index, data: IThreadMainMessage) => (
+										<ThreadListItem
+											thread={data}
+											unread={subscription?.tunread ?? []}
+											unreadUser={subscription?.tunreadUser ?? []}
+											unreadGroup={subscription?.tunreadGroup ?? []}
+											hasDraft={Boolean(subscription?.threadDrafts?.[data._id])}
+											onClick={handleThreadClick}
+										/>
+									)}
+								/>
+							</VirtualizedScrollbars>
+						)}
+					</Box>
+				)}
+			</ContextualbarContent>
+		</ContextualbarDialog>
+	);
+};
+
+export default ThreadList;

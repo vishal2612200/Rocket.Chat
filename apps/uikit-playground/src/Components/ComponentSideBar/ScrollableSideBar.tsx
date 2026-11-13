@@ -1,0 +1,23 @@
+import { css } from '@rocket.chat/css-in-js';
+import { Scrollable, Box } from '@rocket.chat/fuselage';
+
+import BlocksTree from '../../Payload/actionBlock/BlocksTree';
+import DropDown from '../DropDown';
+
+const ScrollableSideBar = () => (
+	<Scrollable vertical>
+		<Box
+			width='100%'
+			marginBlockStart='x40'
+			borderBlockStart='var(--default-border)'
+			backgroundColor='var(--primaryBackgroundColor)'
+			className={css`
+				box-shadow: var(--dropdown-box-shadow);
+			`}
+		>
+			<DropDown blocksTree={BlocksTree} />
+		</Box>
+	</Scrollable>
+);
+
+export default ScrollableSideBar;

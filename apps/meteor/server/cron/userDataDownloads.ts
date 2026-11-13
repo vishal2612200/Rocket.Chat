@@ -1,0 +1,40 @@
+import type { SettingValue } from '@rocket.chat/core-typings';
+import { cronJobs } from '@rocket.chat/cron';
+
+import * as dataExport from '../lib/dataExport';
+import { settings } from '../settings';
+
+export const userDataDownloadsCron = (): void => {
+	const jobName = 'UserDataDownload';
+
+	const plug = async ({
+		disabled,
+		processingFrequency,
+	}: {
+		disabled: boolean;
+		processingFrequency: number;
+	}): Promise<(() => Promise<void>) | undefined> => {
+		if (disabled) {
+			return;
+		}
+
+		await cronJobs.add(jobName, `*/${processingFrequency} * * * *`, async () => dataExport.processDataDownloads());
+
+		return async () => {
+			await cronJobs.remove(jobName);
+		};
+	};
+
+	let unplug: (() => void) | undefined;
+
+	settings.watchMultiple(
+		['Troubleshoot_Disable_Data_Exporter_Processor', 'UserData_ProcessingFrequency'],
+		async ([disabled, processingFrequency]: SettingValue[]): Promise<void> => {
+			await unplug?.();
+			unplug = await plug({
+				disabled: disabled === true,
+				processingFrequency: typeof processingFrequency === 'number' && processingFrequency > 0 ? processingFrequency : 2,
+			});
+		},
+	);
+};

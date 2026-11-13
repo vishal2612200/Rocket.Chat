@@ -1,0 +1,133 @@
+import {
+	Box,
+	Button,
+	ButtonGroup,
+	Icon,
+	IconButton,
+	States,
+	StatesIcon,
+	StatesSubtitle,
+	StatesTitle,
+	TextInput,
+	Throbber,
+	Stack,
+} from '@rocket.chat/fuselage';
+import { useDebouncedValue, useResizeObserver } from '@rocket.chat/fuselage-hooks';
+import { VirtualizedScrollbars, ContextualbarContent, ContextualbarEmptyContent, ContextualbarFooter } from '@rocket.chat/ui-client';
+import { useSetting, useUserPreference } from '@rocket.chat/ui-contexts';
+import type { ChangeEvent } from 'react';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Virtuoso } from 'react-virtuoso';
+
+import ListViewport from '../../../../../components/ListViewport';
+import { isMessageNewDay } from '../../../../room/MessageList/lib/isMessageNewDay';
+import { isMessageSequential } from '../../../../room/MessageList/lib/isMessageSequential';
+import ContactHistoryMessage from '../../../contactHistory/MessageList/ContactHistoryMessage';
+import { useHistoryMessageList } from '../../../contactHistory/MessageList/useHistoryMessageList';
+
+type ContactHistoryMessagesListProps = {
+	chatId: string;
+	onBack: () => void;
+	onOpenRoom?: () => void;
+};
+
+const ContactInfoHistoryMessages = ({ chatId, onBack, onOpenRoom }: ContactHistoryMessagesListProps) => {
+	const { t } = useTranslation();
+	const [text, setText] = useState('');
+	const showUserAvatar = !!useUserPreference<boolean>('displayAvatars');
+
+	const { ref, contentBoxSize: { inlineSize = 378, blockSize = 1 } = {} } = useResizeObserver<HTMLElement>({
+		debounceDelay: 200,
+	});
+
+	const query = useDebouncedValue(
+		useMemo(() => ({ roomId: chatId, filter: text }), [chatId, text]),
+		500,
+	);
+
+	const { isPending, error, isSuccess, data, fetchNextPage } = useHistoryMessageList(query);
+
+	const messages = data?.items || [];
+	const totalItemCount = data?.itemCount ?? 0;
+
+	const handleSearchChange = (event: ChangeEvent<HTMLInputElement>): void => {
+		setText(event.currentTarget.value);
+	};
+
+	const messageGroupingPeriod = Number(useSetting('Message_GroupingPeriod'));
+
+	return (
+		<>
+			<ContextualbarContent flush>
+				<Box
+					display='flex'
+					flexDirection='row'
+					padding={24}
+					borderBlockEndWidth='default'
+					borderBlockEndStyle='solid'
+					borderBlockEndColor='extra-light'
+					flexShrink={0}
+				>
+					<Stack direction='row' align='center' grow gap={8}>
+						<TextInput
+							placeholder={t('Search')}
+							value={text}
+							onChange={handleSearchChange}
+							endAddon={<Icon name='magnifier' size='x20' />}
+						/>
+						<IconButton title={t('Back')} size='small' icon='back' onClick={onBack} />
+					</Stack>
+				</Box>
+				{isPending && (
+					<Box paddingInline={24} paddingBlock={12}>
+						<Throbber size='x12' />
+					</Box>
+				)}
+				{error && (
+					<States>
+						<StatesIcon name='warning' variation='danger' />
+						<StatesTitle>{t('Something_went_wrong')}</StatesTitle>
+						<StatesSubtitle>{error.toString()}</StatesSubtitle>
+					</States>
+				)}
+				{isSuccess && totalItemCount === 0 && <ContextualbarEmptyContent title={t('No_results_found')} />}
+				<ListViewport ref={ref}>
+					{!error && totalItemCount > 0 && messages.length > 0 && (
+						<VirtualizedScrollbars>
+							<Virtuoso
+								totalCount={totalItemCount}
+								initialTopMostItemIndex={{ index: 'LAST' }}
+								followOutput
+								style={{
+									height: blockSize,
+									width: inlineSize,
+								}}
+								endReached={() => fetchNextPage()}
+								overscan={25}
+								data={messages}
+								itemContent={(index, data) => {
+									const lastMessage = messages[index - 1];
+									const isSequential = isMessageSequential(data, lastMessage, messageGroupingPeriod);
+									const isNewDay = isMessageNewDay(data, lastMessage);
+									return (
+										<ContactHistoryMessage message={data} sequential={isSequential} isNewDay={isNewDay} showUserAvatar={showUserAvatar} />
+									);
+								}}
+							/>
+						</VirtualizedScrollbars>
+					)}
+				</ListViewport>
+			</ContextualbarContent>
+			{onOpenRoom && (
+				<ContextualbarFooter>
+					<ButtonGroup stretch>
+						<Button onClick={onOpenRoom}>{t('Open_chat')}</Button>
+					</ButtonGroup>
+				</ContextualbarFooter>
+			)}
+		</>
+	);
+};
+
+export default ContactInfoHistoryMessages;

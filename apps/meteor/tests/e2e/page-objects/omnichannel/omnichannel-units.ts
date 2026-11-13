@@ -1,0 +1,95 @@
+import type { Locator, Page } from '@playwright/test';
+
+import { OmnichannelAdmin, OmnichannelSectionsHref } from './omnichannel-admin';
+import { FlexTab } from '../fragments/flextabs/flextab';
+import { Listbox } from '../fragments/listbox';
+import { Table } from '../fragments/table';
+
+export class OmnichannelUnitFlexTab extends FlexTab {
+	readonly listbox: Listbox;
+
+	constructor(page: Page) {
+		super(page.getByRole('dialog', { name: 'unit' }));
+		this.listbox = new Listbox(page);
+	}
+
+	get inputDepartments() {
+		return this.root.getByLabel('Departments');
+	}
+
+	get inputMonitors() {
+		return this.root.getByLabel('Monitors');
+	}
+
+	get inputVisibility(): Locator {
+		return this.root.getByRole('combobox', { name: 'Visibility' });
+	}
+
+	findDepartmentsChipOption(name: string) {
+		return this.root
+			.getByRole('listbox')
+			.filter({ has: this.root.page().getByLabel('Departments') })
+			.getByRole('option', { name, exact: true });
+	}
+
+	findMonitorChipOption(name: string) {
+		return this.root
+			.getByRole('listbox')
+			.filter({ has: this.root.page().getByLabel('Monitors') })
+			.getByRole('option', { name, exact: true });
+	}
+
+	async selectDepartment(name: string) {
+		await this.inputDepartments.click();
+		await this.inputDepartments.fill(name);
+		await this.listbox.selectOption(name);
+		await this.inputDepartments.click();
+	}
+
+	async selectMonitor(option: string) {
+		await this.inputMonitors.click();
+		await this.listbox.selectOption(option);
+		await this.inputMonitors.click();
+	}
+
+	async removeMonitor(option: string) {
+		await this.findMonitorChipOption(option).click();
+	}
+
+	async selectVisibility(option: string) {
+		await this.inputVisibility.click();
+		await this.listbox.selectOption(option);
+	}
+}
+
+class OmnichannelUnitsTable extends Table {
+	deleteUnitByName(name: string) {
+		return this.findRowByName(name).getByRole('button', { name: 'Remove' });
+	}
+}
+
+export class OmnichannelUnits extends OmnichannelAdmin {
+	protected readonly route = OmnichannelSectionsHref.units;
+
+	protected readonly title = 'Units';
+
+	readonly manageUnit: OmnichannelUnitFlexTab;
+
+	constructor(page: Page) {
+		super(page);
+		this.manageUnit = new OmnichannelUnitFlexTab(page);
+	}
+
+	override get table() {
+		return new OmnichannelUnitsTable(this.page.getByRole('table', { name: this.title }));
+	}
+
+	async createNew() {
+		await this.getButtonByType('unit').click();
+	}
+
+	async deleteUnit(name: string) {
+		await this.table.deleteUnitByName(name).click();
+		await this.deleteModal.confirmDelete();
+	}
+}

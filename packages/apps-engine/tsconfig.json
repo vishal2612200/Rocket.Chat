@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "sourceMap": true,
+        "target": "es6",
+        "module": "commonjs",
+        "declaration": true,
+        "noImplicitAny": true,
+        "noUnusedLocals": true,
+        "removeComments": false,
+        "moduleResolution": "bundler",
+        "resolveJsonModule": true,
+        "types": ["node"],
+        "lib": ["es2017", "dom"],
+        "rootDir": "./src",
+        "outDir": ".",
+        "skipLibCheck": true
+    },
+    "exclude": ["node_modules"],
+    "include": ["./src/**/*"]
+}

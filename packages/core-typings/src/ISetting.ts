@@ -1,0 +1,286 @@
+import type { IRocketChatAssetConstraint } from './IRocketChatAssets';
+import type { IRocketChatRecord } from './IRocketChatRecord';
+
+export enum SettingEditor {
+	COLOR = 'color',
+	EXPRESSION = 'expression',
+}
+
+export type SettingValueMultiSelect = (string | number)[];
+export type SettingValueRoomPick = { _id: string; name?: string }[];
+export type SettingValueAction = { method: string; path: string };
+export type SettingValue =
+	| string
+	| boolean
+	| number
+	| SettingValueMultiSelect
+	| SettingValueRoomPick
+	| SettingValueAction
+	| Date
+	| { url?: string; defaultUrl?: string }
+	| { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; path: string }
+	| undefined
+	| null;
+
+export interface ISettingSelectOption {
+	key: string | number;
+	i18nLabel: string;
+}
+
+export type ISetting = ISettingBase | ISettingEnterprise | ISettingColor | ISettingCode | ISettingAction | ISettingAsset | ISettingRange;
+
+type EnableQuery = string | { _id: string; value: any } | { _id: string; value: any }[];
+
+export type SettingValidationRule =
+	| { type: 'cron' }
+	| {
+			type?: 'query';
+			query: Record<string, unknown>;
+			appliesWhen?: { _id: string; value: unknown } | { _id: string; value: unknown }[];
+			referencesMayBeAbsent?: boolean;
+	  };
+
+type SettingValidation = SettingValidationRule[] | string;
+
+export interface ISettingBase extends IRocketChatRecord {
+	type:
+		| 'boolean'
+		| 'timezone'
+		| 'string'
+		| 'relativeUrl'
+		| 'password'
+		| 'int'
+		| 'select'
+		| 'multiSelect'
+		| 'language'
+		| 'color'
+		| 'font'
+		| 'code'
+		| 'action'
+		| 'asset'
+		| 'roomPick'
+		| 'group'
+		| 'date'
+		| 'lookup'
+		| 'multiLookup'
+		| 'range'
+		| 'timespan';
+	public: boolean;
+	env: boolean;
+	// TODO: migrate settings with group and section with null to undefined
+	group?: string | null;
+	section?: string;
+	tab?: string;
+	i18nLabel: string;
+	value: SettingValue;
+	packageValue: SettingValue;
+	blocked: boolean;
+	enableQuery?: EnableQuery;
+	displayQuery?: EnableQuery;
+	validation?: SettingValidation;
+	sorter: number;
+	properties?: unknown;
+	enterprise?: boolean;
+	requiredOnWizard?: boolean;
+	hidden?: boolean;
+	modules?: Array<string>;
+	invalidValue?: SettingValue;
+	valueSource?: 'packageValue' | 'processEnvValue';
+	secret?: boolean;
+	i18nDescription?: string;
+	autocomplete?: boolean;
+	processEnvValue?: SettingValue;
+	meteorSettingsValue?: SettingValue;
+	ts: Date;
+	createdAt: Date;
+	multiline?: boolean;
+	values?: Array<ISettingSelectOption>;
+	placeholder?: string;
+	lookupEndpoint?: string;
+	wizard?: {
+		step: number;
+		order: number;
+	} | null;
+	persistent?: boolean; // todo: remove
+	readonly?: boolean; // todo: remove
+	alert?: string; // todo: check if this is still used
+	private?: boolean; // todo: remove
+}
+
+export interface ISettingGroup {
+	_id: string;
+	hidden: boolean;
+	blocked: boolean;
+	ts?: Date;
+	sorter: number;
+	i18nLabel: string;
+	displayQuery?: EnableQuery;
+	i18nDescription: string;
+	value?: undefined;
+	type: 'group';
+
+	alert?: string; // todo: check if this is needed
+}
+
+interface ISettingEnterprise extends ISettingBase {
+	enterprise: true;
+	invalidValue: SettingValue;
+}
+
+export interface ISettingColor extends ISettingBase {
+	type: 'color';
+	editor: SettingEditor;
+	packageEditor?: SettingEditor;
+}
+
+interface ISettingCode extends ISettingBase {
+	type: 'code';
+	code?: string;
+}
+
+type SettingActionEndpoint = { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; path: string };
+
+interface ISettingAction extends ISettingBase {
+	type: 'action';
+	value: string | SettingActionEndpoint;
+	actionText?: string;
+}
+
+export interface ISettingAsset extends ISettingBase {
+	type: 'asset';
+	value: { url?: string; defaultUrl?: string };
+	fileConstraints: IRocketChatAssetConstraint;
+	asset: string;
+}
+
+interface ISettingRange extends ISettingBase {
+	type: 'range';
+	minValue: number;
+	maxValue: number;
+}
+
+// Checks if setting has at least the required properties
+export const isSetting = (setting: any): setting is ISetting =>
+	'_id' in setting &&
+	'type' in setting &&
+	'public' in setting &&
+	'value' in setting &&
+	'packageValue' in setting &&
+	'blocked' in setting &&
+	'sorter' in setting &&
+	'i18nLabel' in setting;
+
+export const isSettingEnterprise = (setting: ISettingBase): setting is ISettingEnterprise => setting.enterprise === true;
+
+export function isSettingColor(setting: ISettingBase): setting is ISettingColor;
+export function isSettingColor<T extends Pick<ISettingBase, 'type'>>(setting: T): setting is T & { type: 'color' };
+export function isSettingColor(setting: Pick<ISettingBase, 'type'>): boolean {
+	return setting.type === 'color';
+}
+
+export const isSettingCode = (setting: ISettingBase): setting is ISettingCode => setting.type === 'code';
+
+export const isSettingAction = (setting: ISettingBase): setting is ISettingAction => setting.type === 'action';
+
+export const isActionSettingWithEndpoint = (value: ISettingAction['value']): value is SettingActionEndpoint =>
+	typeof value === 'object' && value !== null && 'method' in value && 'path' in value;
+
+export const isSettingRange = (setting: ISettingBase): setting is ISettingRange => setting.type === 'range';
+
+export interface ISettingStatistics {
+	account2fa?: boolean;
+	cannedResponsesEnabled?: boolean;
+	e2e?: boolean;
+	e2eDefaultDirectRoom?: boolean;
+	e2eDefaultPrivateRoom?: boolean;
+	smtpHost?: string;
+	smtpPort?: string;
+	fromEmail?: string;
+	fileUploadEnable?: boolean;
+	frameworkDevMode?: boolean;
+	frameworkEnable?: boolean;
+	surveyEnabled?: boolean;
+	updateChecker?: boolean;
+	liveStream?: boolean;
+	broadcasting?: boolean;
+	allowEditing?: boolean;
+	allowDeleting?: boolean;
+	allowUnrecognizedSlashCommand?: boolean;
+	allowBadWordsFilter?: boolean;
+	readReceiptEnabled?: boolean;
+	readReceiptStoreUsers?: boolean;
+	pushEnable?: boolean;
+	globalSearchEnabled?: boolean;
+	threadsEnabled?: boolean;
+	webRTCEnableChannel?: boolean;
+	webRTCEnablePrivate?: boolean;
+	webRTCEnableDirect?: boolean;
+}
+
+export interface ISettingStatisticsObject {
+	accounts?: {
+		account2fa?: boolean;
+	};
+	cannedResponses?: {
+		cannedResponsesEnabled?: boolean;
+	};
+	e2ee?: {
+		e2e?: boolean;
+		e2eDefaultDirectRoom?: boolean;
+		e2eDefaultPrivateRoom?: boolean;
+	};
+	email?: {
+		smtp?: {
+			smtpHost?: string;
+			smtpPort?: string;
+			fromEmail?: string;
+		};
+	};
+	fileUpload?: {
+		fileUploadEnable?: boolean;
+	};
+	general?: {
+		apps?: {
+			frameworkDevMode?: boolean;
+			frameworkEnable?: boolean;
+		};
+		nps?: {
+			surveyEnabled?: boolean;
+		};
+		update?: {
+			updateChecker?: boolean;
+		};
+	};
+	liveStreamAndBroadcasting?: {
+		liveStream?: boolean;
+		broadcasting?: boolean;
+	};
+	message?: {
+		allowEditing?: boolean;
+		allowDeleting?: boolean;
+		allowUnrecognizedSlashCommand?: boolean;
+		allowBadWordsFilter?: boolean;
+		readReceiptEnabled?: boolean;
+		readReceiptStoreUsers?: boolean;
+	};
+	push?: {
+		pushEnable?: boolean;
+	};
+	search?: {
+		defaultProvider?: {
+			globalSearchEnabled?: boolean;
+		};
+	};
+	threads?: {
+		threadsEnabled?: boolean;
+	};
+	videoConference?: {
+		bigBlueButton?: boolean;
+		jitsiEnabled?: boolean;
+	};
+	webRTC?: {
+		webRTCEnableChannel?: boolean;
+		webRTCEnablePrivate?: boolean;
+		webRTCEnableDirect?: boolean;
+	};
+}

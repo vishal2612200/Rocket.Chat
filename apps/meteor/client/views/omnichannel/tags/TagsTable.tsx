@@ -1,0 +1,156 @@
+import { IconButton, Pagination, type TableColumnWidth } from '@rocket.chat/fuselage';
+import { useDebouncedValue, useStableCallback } from '@rocket.chat/fuselage-hooks';
+import {
+	GenericTable,
+	GenericTableRow,
+	GenericTableCell,
+	GenericTableHeader,
+	GenericTableHeaderCell,
+	GenericTableBody,
+	GenericTableLoadingRow,
+	usePaginatedQuery,
+	usePagination,
+	useSort,
+	GenericNoResults,
+	links,
+} from '@rocket.chat/ui-client';
+import { useEndpoint, useRouter } from '@rocket.chat/ui-contexts';
+import { hashKey } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useRemoveTag } from './useRemoveTag';
+import FilterByText from '../../../components/FilterByText';
+
+const TagsTable = () => {
+	const { t } = useTranslation();
+	const [filter, setFilter] = useState('');
+	const router = useRouter();
+
+	const { sortBy, sortDirection, setSort } = useSort<'name' | 'description'>('name');
+
+	const onRowClick = useStableCallback((id: string) => router.navigate(`/omnichannel/tags/edit/${id}`));
+	const handleAddNew = useStableCallback(() => router.navigate('/omnichannel/tags/new'));
+	const handleDeleteTag = useRemoveTag();
+
+	const query = useDebouncedValue(
+		useMemo(
+			() => ({
+				viewAll: 'true' as const,
+				text: filter,
+				sort: JSON.stringify({ [sortBy]: sortDirection === 'asc' ? 1 : -1 }),
+			}),
+			[filter, sortBy, sortDirection],
+		),
+		500,
+	);
+
+	const queryKey = ['livechat-tags', query];
+	const {
+		current,
+		itemsPerPage,
+		setItemsPerPage: onSetItemsPerPage,
+		setCurrent: onSetCurrent,
+		...paginationProps
+	} = usePagination({ resetKey: queryKey });
+
+	const getTags = useEndpoint('GET', '/v1/livechat/tags');
+	const { data, isSuccess, isLoading } = usePaginatedQuery({
+		query: {
+			queryKey,
+			queryFn: (page) => getTags({ ...query, ...page }),
+			refetchOnWindowFocus: false,
+		},
+		itemsKey: 'tags',
+		offset: current,
+		count: itemsPerPage,
+	});
+
+	const [defaultQuery] = useState(hashKey([query, current, itemsPerPage]));
+	const queryHasChanged = defaultQuery !== hashKey([query, current, itemsPerPage]);
+
+	const columns: TableColumnWidth[] = ['auto', 'auto', 'x60'];
+
+	const headers = (
+		<>
+			<GenericTableHeaderCell key='name' direction={sortDirection} active={sortBy === 'name'} onClick={setSort} sort='name'>
+				{t('Name')}
+			</GenericTableHeaderCell>
+			<GenericTableHeaderCell
+				key='description'
+				direction={sortDirection}
+				active={sortBy === 'description'}
+				onClick={setSort}
+				sort='description'
+			>
+				{t('Description')}
+			</GenericTableHeaderCell>
+			<GenericTableHeaderCell key='remove' />
+		</>
+	);
+
+	return (
+		<>
+			{((isSuccess && data?.tags.length > 0) || queryHasChanged) && (
+				<FilterByText value={filter} onChange={(event) => setFilter(event.target.value)} />
+			)}
+			{isLoading && (
+				<GenericTable columns={columns}>
+					<GenericTableHeader>{headers}</GenericTableHeader>
+					<GenericTableBody>
+						<GenericTableLoadingRow cols={3} />
+					</GenericTableBody>
+				</GenericTable>
+			)}
+			{isSuccess && data?.tags.length === 0 && queryHasChanged && <GenericNoResults />}
+			{isSuccess && data?.tags.length === 0 && !queryHasChanged && (
+				<GenericNoResults
+					icon='tag'
+					title={t('No_tags_yet')}
+					description={t('No_tags_yet_description')}
+					buttonTitle={t('Create_tag')}
+					buttonAction={handleAddNew}
+					linkHref={links.go.omnichannelDocs}
+					linkText={t('Learn_more_about_tags')}
+				/>
+			)}
+			{isSuccess && data?.tags.length > 0 && (
+				<>
+					<GenericTable columns={columns} aria-label={t('Tags')}>
+						<GenericTableHeader>{headers}</GenericTableHeader>
+						<GenericTableBody>
+							{data?.tags.map(({ _id, name, description }) => (
+								<GenericTableRow key={_id} tabIndex={0} onClick={() => onRowClick(_id)} action>
+									<GenericTableCell truncate>{name}</GenericTableCell>
+									<GenericTableCell truncate>{description}</GenericTableCell>
+									<GenericTableCell>
+										<IconButton
+											icon='trash'
+											size='small'
+											title={t('Remove')}
+											onClick={(e) => {
+												e.stopPropagation();
+												handleDeleteTag(_id);
+											}}
+										/>
+									</GenericTableCell>
+								</GenericTableRow>
+							))}
+						</GenericTableBody>
+					</GenericTable>
+					<Pagination
+						divider
+						current={current}
+						itemsPerPage={itemsPerPage}
+						count={data?.total || 0}
+						onSetItemsPerPage={onSetItemsPerPage}
+						onSetCurrent={onSetCurrent}
+						{...paginationProps}
+					/>
+				</>
+			)}
+		</>
+	);
+};
+
+export default TagsTable;

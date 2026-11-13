@@ -1,0 +1,465 @@
+import type { Item } from '../../Components/DropDown/types';
+import { callout, calloutWithAction } from '../callout';
+import {
+	actionWithButtonDefault,
+	actionWithButtonPrimary,
+	actionWithButtonSecondary,
+	actionWithButtonDanger,
+	actionWithButtonAsLink,
+	actionWithButtonWarning,
+	actionWithButtonSuccess,
+	actionWithButtonSecondaryWithVariant,
+	actionWithMenu,
+	actionWithSingleStaticSelect,
+	actionWithMultiStaticSelect,
+	actionWithDatePicker,
+	actionWithDateTimePicker,
+	actionWithLinearScale,
+} from './action';
+import { contextWithPlainText, contextWithMrkdwn, contextWithImage, contextWithAllElements } from './context';
+import { contextActions, contextActionsWithFeedback } from './contextActions';
+import { divider } from './divider';
+import { header } from './header';
+import { imageWithTitle, imageWithoutTitle } from './image';
+import { infoCardPlain, infoCardMultipleRows } from './infoCard';
+import {
+	inputWithSingleLineInput,
+	inputWithMultiLineInput,
+	inputWithSingleStaticSelect,
+	inputWithMultiStaticSelect,
+	inputWithDatePicker,
+	inputWithLinearSelect,
+	inputWithNumberInput,
+	inputWithEmailInput,
+	inputWithUrlInput,
+	inputWithDateTimePicker,
+	inputWithConversationsSelect,
+	inputWithMultiConversationsSelect,
+} from './input';
+import { markdown } from './markdown';
+import { previewPlain, previewWithImage, previewWithUrl, previewWithImageAndUrl } from './preview';
+import {
+	sectionWithPlainText,
+	sectionWithMrkdwn,
+	sectionWithTextFields,
+	sectionWithButtonDefault,
+	sectionWithButtonPrimary,
+	sectionWithButtonDanger,
+	sectionWithButtonWarning,
+	sectionWithButtonSuccess,
+	sectionWithButtonSecondaryWithVariant,
+	sectionWithButtonAsLink,
+	sectionWithImage,
+	sectionWithMenu,
+	sectionWithdatePicker,
+	sectionWithRadioButtons,
+	sectionWithCheckbox,
+	sectionWithUsersSelect,
+} from './section';
+import { table } from './table';
+import { video } from './video';
+import { actionWithCheckbox } from '../action/checkbox';
+import { actionWithRadioButton } from '../action/radioButton';
+import { actionWithTimePicker } from '../action/timePicker';
+import { actionWithToggleSwitch } from '../action/toggleSwitch';
+import { disabled, plain, selected } from '../tabNavigation';
+
+const BlocksTree: Item = [
+	{
+		label: 'actions',
+		branches: [
+			{
+				label: 'button',
+				branches: [
+					{
+						label: 'default',
+						payload: actionWithButtonDefault,
+					},
+					{
+						label: 'primary',
+						payload: actionWithButtonPrimary,
+					},
+					{
+						label: 'secondary',
+						payload: actionWithButtonSecondary,
+					},
+					{
+						label: 'danger',
+						payload: actionWithButtonDanger,
+					},
+					{
+						label: 'warning',
+						payload: actionWithButtonWarning,
+					},
+					{
+						label: 'success',
+						payload: actionWithButtonSuccess,
+					},
+					{
+						label: 'secondary with variant',
+						payload: actionWithButtonSecondaryWithVariant,
+					},
+					{
+						label: 'as Link',
+						payload: actionWithButtonAsLink,
+					},
+				],
+			},
+
+			{
+				label: 'static select',
+				branches: [
+					{
+						label: 'Single',
+						payload: actionWithSingleStaticSelect,
+					},
+					{
+						label: 'Multi',
+						payload: actionWithMultiStaticSelect,
+					},
+				],
+			},
+			{
+				label: 'menu',
+				payload: actionWithMenu,
+			},
+			{
+				label: 'date Picker',
+				payload: actionWithDatePicker,
+			},
+			{
+				label: 'time Picker',
+				payload: actionWithTimePicker,
+			},
+			{
+				label: 'date time Picker',
+				payload: actionWithDateTimePicker,
+			},
+			{
+				label: 'linear scale',
+				payload: actionWithLinearScale,
+			},
+			{
+				label: 'toggle switch',
+				payload: actionWithToggleSwitch,
+			},
+			{
+				label: 'radio buttons',
+				payload: actionWithRadioButton,
+			},
+			{
+				label: 'checkbox',
+				payload: actionWithCheckbox,
+			},
+		],
+	},
+	{
+		label: 'section',
+		branches: [
+			{
+				label: 'text',
+				branches: [
+					{
+						label: 'plain text',
+						payload: sectionWithPlainText,
+					},
+					{
+						label: 'mrkdwn',
+						payload: sectionWithMrkdwn,
+					},
+					{
+						label: 'text fields',
+						payload: sectionWithTextFields,
+					},
+				],
+			},
+			{
+				label: 'button',
+				branches: [
+					{
+						label: 'default',
+						payload: sectionWithButtonDefault,
+					},
+					{
+						label: 'primary',
+						payload: sectionWithButtonPrimary,
+					},
+					{
+						label: 'danger',
+						payload: sectionWithButtonDanger,
+					},
+					{
+						label: 'warning',
+						payload: sectionWithButtonWarning,
+					},
+					{
+						label: 'success',
+						payload: sectionWithButtonSuccess,
+					},
+					{
+						label: 'secondary with variant',
+						payload: sectionWithButtonSecondaryWithVariant,
+					},
+					{
+						label: 'as Link',
+						payload: sectionWithButtonAsLink,
+					},
+				],
+			},
+			{
+				label: 'image',
+				payload: sectionWithImage,
+			},
+			{
+				label: 'menu',
+				payload: sectionWithMenu,
+			},
+			{
+				label: 'date Picker',
+				payload: sectionWithdatePicker,
+			},
+			{
+				label: 'radio buttons',
+				payload: sectionWithRadioButtons,
+			},
+			{
+				label: 'checkbox',
+				payload: sectionWithCheckbox,
+			},
+			{
+				label: 'users select',
+				payload: sectionWithUsersSelect,
+			},
+		],
+	},
+	{
+		label: 'preview',
+		branches: [
+			{
+				label: 'plain',
+				payload: previewPlain,
+			},
+			{
+				label: 'image',
+				payload: previewWithImage,
+			},
+			{
+				label: 'URL',
+				payload: previewWithUrl,
+			},
+			{
+				label: 'image and URL',
+				payload: previewWithImageAndUrl,
+			},
+		],
+	},
+	{
+		label: 'info card',
+		branches: [
+			{
+				label: 'plain',
+				payload: infoCardPlain,
+			},
+			{
+				label: 'multiple sections',
+				payload: infoCardMultipleRows,
+			},
+		],
+	},
+	{
+		label: 'input',
+		branches: [
+			{
+				label: 'textfeild',
+				branches: [
+					{
+						label: 'single line',
+						payload: inputWithSingleLineInput,
+					},
+					{
+						label: 'multi line',
+						payload: inputWithMultiLineInput,
+					},
+				],
+			},
+			{
+				label: 'static select',
+				branches: [
+					{
+						label: 'single',
+						payload: inputWithSingleStaticSelect,
+					},
+					{
+						label: 'multi',
+						payload: inputWithMultiStaticSelect,
+					},
+				],
+			},
+			{
+				label: 'date Picker',
+				payload: inputWithDatePicker,
+			},
+			{
+				label: 'linear scale',
+				payload: inputWithLinearSelect,
+			},
+			{
+				label: 'number',
+				payload: inputWithNumberInput,
+			},
+			{
+				label: 'email',
+				payload: inputWithEmailInput,
+			},
+			{
+				label: 'url',
+				payload: inputWithUrlInput,
+			},
+			{
+				label: 'date time Picker',
+				payload: inputWithDateTimePicker,
+			},
+			{
+				label: 'conversations select',
+				branches: [
+					{
+						label: 'single',
+						payload: inputWithConversationsSelect,
+					},
+					{
+						label: 'multi',
+						payload: inputWithMultiConversationsSelect,
+					},
+				],
+			},
+		],
+	},
+	{
+		label: 'header',
+		branches: [
+			{
+				label: 'Plain',
+				payload: header,
+			},
+		],
+	},
+	{
+		label: 'markdown',
+		branches: [
+			{
+				label: 'Release notes',
+				payload: markdown,
+			},
+		],
+	},
+	{
+		label: 'table',
+		branches: [
+			{
+				label: 'Service uptime',
+				payload: table,
+			},
+		],
+	},
+	{
+		label: 'video',
+		branches: [
+			{
+				label: 'Embedded video',
+				payload: video,
+			},
+		],
+	},
+	{
+		label: 'context_actions',
+		branches: [
+			{
+				label: 'Icon buttons',
+				payload: contextActions,
+			},
+			{
+				label: 'Feedback buttons',
+				payload: contextActionsWithFeedback,
+			},
+		],
+	},
+	{
+		label: 'image',
+		branches: [
+			{
+				label: 'with title',
+				payload: imageWithTitle,
+			},
+			{
+				label: 'without title',
+				payload: imageWithoutTitle,
+			},
+		],
+	},
+	{
+		label: 'Context',
+		branches: [
+			{
+				label: 'Plain Text',
+				payload: contextWithPlainText,
+			},
+			{
+				label: 'Mrkdwn',
+				payload: contextWithMrkdwn,
+			},
+			{
+				label: 'Image',
+				payload: contextWithImage,
+			},
+			{
+				label: 'All Elements',
+				payload: contextWithAllElements,
+			},
+		],
+	},
+	{
+		label: 'Conditional',
+		branches: [],
+	},
+	{
+		label: 'divider',
+		branches: [
+			{
+				label: 'Plain',
+				payload: divider,
+			},
+		],
+	},
+	{
+		label: 'callout',
+		branches: [
+			{
+				label: 'Plain',
+				payload: callout,
+			},
+			{
+				label: 'With Action',
+				payload: calloutWithAction,
+			},
+		],
+	},
+	{
+		label: 'TabNavigation',
+		branches: [
+			{
+				label: 'Plain',
+				payload: plain,
+			},
+			{
+				label: 'Disabled',
+				payload: disabled,
+			},
+			{
+				label: 'Selected',
+				payload: selected,
+			},
+		],
+	},
+];
+
+export default BlocksTree;

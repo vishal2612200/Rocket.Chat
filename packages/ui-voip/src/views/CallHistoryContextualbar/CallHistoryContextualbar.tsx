@@ -1,0 +1,143 @@
+import type { CallPreventionRecord } from '@rocket.chat/core-typings';
+import { Box, Button, ButtonGroup, Icon, MessageBlock } from '@rocket.chat/fuselage';
+import { UiKitComponent, UiKitMessage as UiKitMessageSurfaceRender, UiKitContext } from '@rocket.chat/fuselage-ui-kit';
+import {
+	ContextualbarDialog,
+	ContextualbarHeader,
+	ContextualbarTitle,
+	ContextualbarFooter,
+	ContextualbarIcon,
+	ContextualbarScrollableContent,
+	InfoPanel,
+	InfoPanelSection,
+	InfoPanelLabel,
+	InfoPanelText,
+} from '@rocket.chat/ui-client';
+import { useTranslation } from 'react-i18next';
+
+import type { HistoryActionCallbacks } from './CallHistoryActions';
+import CallHistoryActions from './CallHistoryActions';
+import { useFullStartDate } from './useFullStartDate';
+import CallHistoryUser from '../../components/CallHistoryUser';
+import { usePeekMediaSessionState } from '../../context/usePeekMediaSessionState';
+import { isCallHistoryInternalContact, type CallHistoryContact } from '../../definitions';
+import { getHistoryMessagePayload } from '../../ui-kit/getHistoryMessagePayload';
+
+/**
+ * The panel captions the card with "Prevented by app: {app name}", except when the card's own
+ * second line already reads that: a malformed record that carries neither a reason nor a key.
+ */
+export const shouldDisplayPreventedByBox = (preventedBy: CallPreventionRecord | undefined): preventedBy is CallPreventionRecord =>
+	typeof preventedBy !== 'undefined' && (Boolean(preventedBy.i18n) || Boolean(preventedBy.text));
+
+export type CallHistoryData = {
+	callId: string;
+	direction: 'inbound' | 'outbound';
+	duration: number;
+	startedAt: Date;
+	state: 'ended' | 'not-answered' | 'failed' | 'error' | 'transferred' | 'prevented';
+	preventedBy?: CallPreventionRecord;
+	messageId?: string;
+};
+
+export type CallHistoryContextualBarProps = {
+	onClose: () => void;
+	actions: HistoryActionCallbacks;
+	contact: CallHistoryContact;
+	data: CallHistoryData;
+};
+
+const contextValue = {
+	action: () => undefined,
+	rid: '',
+	values: {},
+};
+
+const CallHistoryContextualBar = ({ onClose, actions, contact, data }: CallHistoryContextualBarProps) => {
+	const { t } = useTranslation();
+
+	const { voiceCall, directMessage } = actions;
+	const { duration, callId, direction, startedAt } = data;
+	const state = usePeekMediaSessionState();
+
+	const date = useFullStartDate(startedAt);
+	return (
+		<ContextualbarDialog onClose={onClose}>
+			<ContextualbarHeader>
+				<ContextualbarIcon name='info-circled' />
+				<ContextualbarTitle>{t('Call_info')}</ContextualbarTitle>
+				<CallHistoryActions onClose={onClose} actions={actions} />
+			</ContextualbarHeader>
+			<ContextualbarScrollableContent>
+				<InfoPanel>
+					<InfoPanelSection fontScale='p1b'>
+						<CallHistoryUser contact={contact} />
+					</InfoPanelSection>
+					<InfoPanelSection>
+						<Box display='flex' flexDirection='row' alignItems='center' fontScale='p1b' gap={8}>
+							<Icon name={direction === 'inbound' ? 'arrow-down-left' : 'arrow-up-right'} size={24} />
+							{direction === 'inbound' ? t('Incoming_voice_call') : t('Outgoing_voice_call')}
+						</Box>
+					</InfoPanelSection>
+					<InfoPanelSection>
+						<MessageBlock fixedWidth>
+							<UiKitContext.Provider value={contextValue}>
+								<UiKitComponent
+									render={UiKitMessageSurfaceRender}
+									blocks={getHistoryMessagePayload({ state: data.state, duration, preventedBy: data.preventedBy }).blocks}
+								/>
+							</UiKitContext.Provider>
+						</MessageBlock>
+						<Box marginBlockStart={-8}>
+							{shouldDisplayPreventedByBox(data.preventedBy) && (
+								<InfoPanelLabel>{t('Prevented_by_app', { appName: data.preventedBy.appName })}</InfoPanelLabel>
+							)}
+							<InfoPanelLabel>{date}</InfoPanelLabel>
+						</Box>
+					</InfoPanelSection>
+					<InfoPanelSection>
+						<InfoPanelLabel>{t('Call_ID')}</InfoPanelLabel>
+						<InfoPanelText>{callId}</InfoPanelText>
+					</InfoPanelSection>
+					{isCallHistoryInternalContact(contact) && contact.voiceCallExtension && (
+						<InfoPanelSection>
+							<InfoPanelLabel>{t('Voice_call_extension')}</InfoPanelLabel>
+							<InfoPanelText>{contact.voiceCallExtension}</InfoPanelText>
+						</InfoPanelSection>
+					)}
+				</InfoPanel>
+			</ContextualbarScrollableContent>
+			<ContextualbarFooter>
+				<ButtonGroup stretch>
+					{isCallHistoryInternalContact(contact) && directMessage && (
+						<Button onClick={directMessage}>
+							<Box is='span' display='flex' alignItems='center' justifyContent='center' columnGap={4}>
+								<Icon name='balloon' size='x20' />
+								<Box is='span' withTruncatedText>
+									{t('Direct_message')}
+								</Box>
+							</Box>
+						</Button>
+					)}
+					{voiceCall && (
+						<Button
+							variant='success'
+							onClick={voiceCall}
+							disabled={state !== 'available'}
+							title={state !== 'available' ? t('Call_in_progress') : undefined}
+						>
+							<Box is='span' display='flex' alignItems='center' justifyContent='center' columnGap={4}>
+								<Icon name='phone' size='x20' />
+								<Box is='span' withTruncatedText>
+									{t('Call')}
+								</Box>
+							</Box>
+						</Button>
+					)}
+				</ButtonGroup>
+			</ContextualbarFooter>
+		</ContextualbarDialog>
+	);
+};
+
+export default CallHistoryContextualBar;

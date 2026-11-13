@@ -1,0 +1,137 @@
+import type { IUser } from '@rocket.chat/core-typings';
+import { Box, Callout } from '@rocket.chat/fuselage';
+import { useStableCallback } from '@rocket.chat/fuselage-hooks';
+import { ContextualbarContent, FormSkeleton, UserCardRole, UserInfo } from '@rocket.chat/ui-client';
+import { useSetting, useRolesDescription, useEndpoint } from '@rocket.chat/ui-contexts';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import AdminUserInfoActions from './AdminUserInfoActions';
+import type { AdminUsersTab } from './AdminUsersPage';
+import { getUserEmailAddress } from '../../../../lib/getUserEmailAddress';
+import UserInfoPhoneNumberList from '../../../components/UserInfoPhoneNumberList';
+import { UserStatus } from '../../../components/UserStatus';
+import { UserStatusText } from '../../../components/UserStatusText';
+import { getUserEmailVerified } from '../../../lib/utils/getUserEmailVerified';
+
+export type AdminUserInfoWithDataProps = {
+	uid: IUser['_id'];
+	onReload: () => void;
+	tab: AdminUsersTab;
+};
+
+const AdminUserInfoWithData = ({ uid, onReload, tab }: AdminUserInfoWithDataProps) => {
+	const { t } = useTranslation();
+	const getRoles = useRolesDescription();
+	const approveManuallyUsers = useSetting('Accounts_ManuallyApproveNewUsers');
+
+	const getUsersInfo = useEndpoint('GET', '/v1/users.info');
+
+	const query = useMemo(() => ({ userId: uid }), [uid]);
+
+	const { data, isPending, error, refetch } = useQuery({
+		queryKey: ['users', query, 'admin'],
+		queryFn: async () => {
+			const usersInfo = await getUsersInfo(query);
+			return usersInfo;
+		},
+		meta: {
+			apiErrorToastMessage: true,
+		},
+	});
+
+	const onChange = useStableCallback(() => {
+		onReload();
+		refetch();
+	});
+
+	const user = useMemo(() => {
+		if (!data?.user) {
+			return;
+		}
+
+		const {
+			avatarETag,
+			name,
+			username,
+			phones,
+			createdAt,
+			roles = [],
+			status,
+			statusText,
+			statusExpiresAt,
+			bio,
+			utcOffset,
+			lastLogin,
+			nickname,
+			canViewAllInfo,
+			reason,
+			sipExtension,
+			abacAttributes,
+		} = data.user;
+
+		return {
+			avatarETag,
+			name,
+			username,
+			lastLogin,
+			roles: getRoles(roles).map((role, index) => <UserCardRole key={index}>{role}</UserCardRole>),
+			bio,
+			canViewAllInfo,
+			phoneNumbers: phones?.length ? <UserInfoPhoneNumberList phones={phones} /> : undefined,
+			utcOffset,
+			customFields: {
+				...data.user.customFields,
+				...(approveManuallyUsers && !data.user.active && data.user.reason ? { Reason: data.user.reason } : undefined),
+			},
+			verified: getUserEmailVerified(data.user),
+			email: getUserEmailAddress(data.user),
+			createdAt,
+			status: <UserStatus status={status} />,
+			customStatus: <UserStatusText status={status} statusText={statusText} statusExpiresAt={statusExpiresAt} />,
+			nickname,
+			reason,
+			sipExtension,
+			abacAttributes,
+		};
+	}, [approveManuallyUsers, data, getRoles]);
+
+	if (isPending) {
+		return (
+			<ContextualbarContent>
+				<FormSkeleton />
+			</ContextualbarContent>
+		);
+	}
+
+	if (error || !user || !data?.user) {
+		return (
+			<ContextualbarContent>
+				<Box paddingBlock={16}>
+					<Callout type='danger'>{t('User_not_found')}</Callout>
+				</Box>
+			</ContextualbarContent>
+		);
+	}
+
+	return (
+		<UserInfo
+			{...user}
+			actions={
+				<AdminUserInfoActions
+					isActive={data?.user.active}
+					isAdmin={data?.user.roles?.includes('admin')}
+					userId={data?.user._id}
+					username={user.username}
+					isFederatedUser={!!data.user.federated}
+					onChange={onChange}
+					onReload={onReload}
+					tab={tab}
+				/>
+			}
+		/>
+	);
+};
+
+export default AdminUserInfoWithData;

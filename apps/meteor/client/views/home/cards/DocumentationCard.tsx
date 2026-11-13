@@ -1,0 +1,30 @@
+import type { Card } from '@rocket.chat/fuselage';
+import { links } from '@rocket.chat/ui-client';
+import type { ComponentProps } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { GenericCard, GenericCardButton } from '../../../components/GenericCard';
+import { useExternalLink } from '../../../hooks/useExternalLink';
+
+const DOCS_URL = links.go.documentation;
+
+const DocumentationCard = (props: Omit<ComponentProps<typeof Card>, 'type'>) => {
+	const { t } = useTranslation();
+	const handleOpenLink = useExternalLink();
+
+	return (
+		<GenericCard
+			title={t('Documentation')}
+			body={t('Learn_how_to_unlock_the_myriad_possibilities_of_rocket_chat')}
+			buttons={[
+				<GenericCardButton key={1} onClick={() => handleOpenLink(DOCS_URL)} role='link'>
+					{t('See_documentation')}
+				</GenericCardButton>,
+			]}
+			width='x340'
+			{...props}
+		/>
+	);
+};
+
+export default DocumentationCard;

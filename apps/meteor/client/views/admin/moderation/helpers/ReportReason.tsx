@@ -1,0 +1,27 @@
+import { Box, Tag } from '@rocket.chat/fuselage';
+
+import { useFormatDate } from '../../../../hooks/useFormatDate';
+
+export type ReportReasonProps = { ind: number; uinfo: string | undefined; msg: string; ts: Date };
+
+const ReportReason = ({ ind, uinfo, msg, ts }: ReportReasonProps) => {
+	const formatDate = useFormatDate();
+	return (
+		<Box display='flex' flexDirection='column' alignItems='flex-start' marginBlock='x8'>
+			<Tag variant='danger'>Report #{ind}</Tag>
+			<Box wordBreak='break-word' marginBlock='x4' fontSize='p2b'>
+				{msg}
+			</Box>
+			<Box>
+				<Box is='span' fontWeight='700' color='font-info' fontSize='micro'>
+					@{uinfo || 'rocket.cat'}
+				</Box>{' '}
+				<Box is='span' fontWeight='700' color='font-annotation' fontSize='micro'>
+					{formatDate(ts)}
+				</Box>
+			</Box>
+		</Box>
+	);
+};
+
+export default ReportReason;
